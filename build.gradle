@@ -1,0 +1,40 @@
+plugins {
+    id 'org.springframework.boot' version '3.1.4'
+    id 'io.spring.dependency-management' version '1.1.0'
+    id 'java'
+}
+
+group = 'my.lexicon'
+version = '1.0.0'
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+}
+tasks.named("bootRun") {
+    jvmArgs = ["-Djava.net.preferIPv4Stack=true"]
+}
+
+
+dependencies {
+    // Spring Boot Web Starter brings in all the necessary libraries for a web app.
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.security:spring-security-crypto'
+
+    // Include any legacy jars you might have in the lib folder (if needed)
+    implementation fileTree(dir: 'lib', include: ['*.jar'])
+    
+    // For testing, this brings in JUnit, MockMvc and other useful test utilities.
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+// Specify the main class for the Spring Boot application
+springBoot {
+    mainClass = 'lexicon.LexiconApplication'
+}
+
+// Use the JUnit Platform for tests (recommended when using Spring Boot Starter Test)
+test {
+    useJUnitPlatform()
+}
