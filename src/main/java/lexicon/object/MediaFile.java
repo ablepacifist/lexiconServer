@@ -14,6 +14,7 @@ public class MediaFile {
     private String title;
     private String description;
     private boolean isPublic;
+    private String fileHash; // SHA-256 hash for deduplication
     
     public MediaFile() {}
     
@@ -30,6 +31,13 @@ public class MediaFile {
         this.title = title;
         this.description = description;
         this.isPublic = isPublic;
+    }
+    
+    // Constructor with file hash
+    public MediaFile(int id, String filename, String originalFilename, String contentType, 
+                    long fileSize, String filePath, int uploadedBy, String title, String description, boolean isPublic, String fileHash) {
+        this(id, filename, originalFilename, contentType, fileSize, filePath, uploadedBy, title, description, isPublic);
+        this.fileHash = fileHash;
     }
     
     // Getters and Setters
@@ -66,8 +74,11 @@ public class MediaFile {
     public boolean isPublic() { return isPublic; }
     public void setPublic(boolean isPublic) { this.isPublic = isPublic; }
     
+    public String getFileHash() { return fileHash; }
+    public void setFileHash(String fileHash) { this.fileHash = fileHash; }
+    
     @Override
     public String toString() {
-        return "MediaFile{id=" + id + ", title='" + title + "', filename='" + filename + "', uploadedBy=" + uploadedBy + "}";
+        return "MediaFile{id=" + id + ", title='" + title + "', filename='" + filename + "', uploadedBy=" + uploadedBy + ", fileHash='" + fileHash + "'}";
     }
 }

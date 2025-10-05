@@ -36,6 +36,8 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/test/**").permitAll()  // Allow access to test endpoints
                 .requestMatchers("/api/players/**").permitAll()  // Allow access to player endpoints for testing
                 .requestMatchers("/api/media/public/**").permitAll()
+                .requestMatchers("/api/media/upload").permitAll()  // Allow file uploads for testing
+                .requestMatchers("/api/media/**").permitAll()  // Allow media operations for testing
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )

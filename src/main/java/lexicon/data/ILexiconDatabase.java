@@ -32,6 +32,10 @@ public interface ILexiconDatabase {
     void updateMediaFile(MediaFile mediaFile);
     void deleteMediaFile(int mediaFileId);
     
+    // File deduplication
+    MediaFile getMediaFileByHash(String fileHash);
+    void addMediaFileReference(int originalMediaFileId, int userId, String title, String description);
+    
     // Additional utility methods
     boolean playerExists(String username);
     boolean emailExists(String email);

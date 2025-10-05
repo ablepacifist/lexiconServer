@@ -192,7 +192,8 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     @Override
     public void addMediaFile(MediaFile mediaFile) {
         try (Connection conn = getConnection()) {
-            String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            // Try to add with file_hash column, fall back if it doesn't exist
+            String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public, file_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setInt(1, mediaFile.getId());
                 stmt.setString(2, mediaFile.getFilename());
@@ -205,35 +206,174 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
                 stmt.setString(9, mediaFile.getTitle());
                 stmt.setString(10, mediaFile.getDescription());
                 stmt.setBoolean(11, mediaFile.isPublic());
+                stmt.setString(12, mediaFile.getFileHash());
                 stmt.executeUpdate();
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            // If file_hash column doesn't exist, try without it
+            try (Connection conn = getConnection()) {
+                String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setInt(1, mediaFile.getId());
+                    stmt.setString(2, mediaFile.getFilename());
+                    stmt.setString(3, mediaFile.getOriginalFilename());
+                    stmt.setString(4, mediaFile.getContentType());
+                    stmt.setLong(5, mediaFile.getFileSize());
+                    stmt.setString(6, mediaFile.getFilePath());
+                    stmt.setInt(7, mediaFile.getUploadedBy());
+                    stmt.setTimestamp(8, Timestamp.valueOf(mediaFile.getUploadDate()));
+                    stmt.setString(9, mediaFile.getTitle());
+                    stmt.setString(10, mediaFile.getDescription());
+                    stmt.setBoolean(11, mediaFile.isPublic());
+                    stmt.executeUpdate();
+                }
+            } catch (SQLException e2) {
+                e2.printStackTrace();
+            }
         }
     }
     
     @Override
     public MediaFile getMediaFile(int mediaFileId) {
-        // Implementation would go here - similar pattern to getUser
-        return null; // TODO: Implement
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, mediaFileId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        MediaFile mediaFile = new MediaFile();
+                        mediaFile.setId(rs.getInt("id"));
+                        mediaFile.setFilename(rs.getString("filename"));
+                        mediaFile.setOriginalFilename(rs.getString("original_filename"));
+                        mediaFile.setContentType(rs.getString("content_type"));
+                        mediaFile.setFileSize(rs.getLong("file_size"));
+                        mediaFile.setFilePath(rs.getString("file_path"));
+                        mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+                        
+                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+                        if (uploadTimestamp != null) {
+                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+                        }
+                        
+                        mediaFile.setTitle(rs.getString("title"));
+                        mediaFile.setDescription(rs.getString("description"));
+                        mediaFile.setPublic(rs.getBoolean("is_public"));
+                        return mediaFile;
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
     
     @Override
     public List<MediaFile> getMediaFilesByPlayer(int playerId) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
+        List<MediaFile> mediaFiles = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE uploaded_by = ? ORDER BY upload_date DESC";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, playerId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        MediaFile mediaFile = new MediaFile();
+                        mediaFile.setId(rs.getInt("id"));
+                        mediaFile.setFilename(rs.getString("filename"));
+                        mediaFile.setOriginalFilename(rs.getString("original_filename"));
+                        mediaFile.setContentType(rs.getString("content_type"));
+                        mediaFile.setFileSize(rs.getLong("file_size"));
+                        mediaFile.setFilePath(rs.getString("file_path"));
+                        mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+                        
+                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+                        if (uploadTimestamp != null) {
+                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+                        }
+                        
+                        mediaFile.setTitle(rs.getString("title"));
+                        mediaFile.setDescription(rs.getString("description"));
+                        mediaFile.setPublic(rs.getBoolean("is_public"));
+                        mediaFiles.add(mediaFile);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return mediaFiles;
     }
     
     @Override
     public List<MediaFile> getAllPublicMediaFiles() {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
+        List<MediaFile> mediaFiles = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE is_public = true ORDER BY upload_date DESC";
+            try (PreparedStatement stmt = conn.prepareStatement(sql);
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    MediaFile mediaFile = new MediaFile();
+                    mediaFile.setId(rs.getInt("id"));
+                    mediaFile.setFilename(rs.getString("filename"));
+                    mediaFile.setOriginalFilename(rs.getString("original_filename"));
+                    mediaFile.setContentType(rs.getString("content_type"));
+                    mediaFile.setFileSize(rs.getLong("file_size"));
+                    mediaFile.setFilePath(rs.getString("file_path"));
+                    mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+                    
+                    Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+                    if (uploadTimestamp != null) {
+                        mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+                    }
+                    
+                    mediaFile.setTitle(rs.getString("title"));
+                    mediaFile.setDescription(rs.getString("description"));
+                    mediaFile.setPublic(rs.getBoolean("is_public"));
+                    mediaFiles.add(mediaFile);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return mediaFiles;
     }
     
     @Override
     public List<MediaFile> searchMediaFiles(String searchTerm) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
+        List<MediaFile> mediaFiles = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE (title LIKE ? OR description LIKE ?) AND is_public = true ORDER BY upload_date DESC";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                String searchPattern = "%" + searchTerm + "%";
+                stmt.setString(1, searchPattern);
+                stmt.setString(2, searchPattern);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        MediaFile mediaFile = new MediaFile();
+                        mediaFile.setId(rs.getInt("id"));
+                        mediaFile.setFilename(rs.getString("filename"));
+                        mediaFile.setOriginalFilename(rs.getString("original_filename"));
+                        mediaFile.setContentType(rs.getString("content_type"));
+                        mediaFile.setFileSize(rs.getLong("file_size"));
+                        mediaFile.setFilePath(rs.getString("file_path"));
+                        mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+                        
+                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+                        if (uploadTimestamp != null) {
+                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+                        }
+                        
+                        mediaFile.setTitle(rs.getString("title"));
+                        mediaFile.setDescription(rs.getString("description"));
+                        mediaFile.setPublic(rs.getBoolean("is_public"));
+                        mediaFiles.add(mediaFile);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return mediaFiles;
     }
     
     @Override
@@ -285,12 +425,31 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     
     @Override
     public void updateMediaFile(MediaFile mediaFile) {
-        // Implementation would go here
+        try (Connection conn = getConnection()) {
+            String sql = "UPDATE media_files SET title = ?, description = ?, is_public = ? WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, mediaFile.getTitle());
+                stmt.setString(2, mediaFile.getDescription());
+                stmt.setBoolean(3, mediaFile.isPublic());
+                stmt.setInt(4, mediaFile.getId());
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
     
     @Override
     public void deleteMediaFile(int mediaFileId) {
-        // Implementation would go here
+        try (Connection conn = getConnection()) {
+            String sql = "DELETE FROM media_files WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, mediaFileId);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
     
     @Override
@@ -305,7 +464,97 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     
     @Override
     public List<MediaFile> getRecentMediaFiles(int limit) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
+        List<MediaFile> mediaFiles = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE is_public = true ORDER BY upload_date DESC LIMIT ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, limit);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        MediaFile mediaFile = new MediaFile();
+                        mediaFile.setId(rs.getInt("id"));
+                        mediaFile.setFilename(rs.getString("filename"));
+                        mediaFile.setOriginalFilename(rs.getString("original_filename"));
+                        mediaFile.setContentType(rs.getString("content_type"));
+                        mediaFile.setFileSize(rs.getLong("file_size"));
+                        mediaFile.setFilePath(rs.getString("file_path"));
+                        mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+                        
+                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+                        if (uploadTimestamp != null) {
+                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+                        }
+                        
+                        mediaFile.setTitle(rs.getString("title"));
+                        mediaFile.setDescription(rs.getString("description"));
+                        mediaFile.setPublic(rs.getBoolean("is_public"));
+                        mediaFiles.add(mediaFile);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return mediaFiles;
+    }
+    
+    // File deduplication methods
+    @Override
+    public MediaFile getMediaFileByHash(String fileHash) {
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM media_files WHERE file_hash = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, fileHash);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        return mapResultSetToMediaFile(rs);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    
+    @Override
+    public void addMediaFileReference(int originalMediaFileId, int userId, String title, String description) {
+        // For now, we'll create a media_file_references table later
+        // This method will create entries showing that a user "owns" a reference to the original file
+        System.out.println("Creating file reference: User " + userId + " referencing file " + originalMediaFileId);
+        // TODO: Implement references table
+    }
+    
+    /**
+     * Helper method to map ResultSet to MediaFile object
+     */
+    private MediaFile mapResultSetToMediaFile(ResultSet rs) throws SQLException {
+        MediaFile mediaFile = new MediaFile();
+        mediaFile.setId(rs.getInt("id"));
+        mediaFile.setFilename(rs.getString("filename"));
+        mediaFile.setOriginalFilename(rs.getString("original_filename"));
+        mediaFile.setContentType(rs.getString("content_type"));
+        mediaFile.setFileSize(rs.getLong("file_size"));
+        mediaFile.setFilePath(rs.getString("file_path"));
+        mediaFile.setUploadedBy(rs.getInt("uploaded_by"));
+        
+        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+        if (uploadTimestamp != null) {
+            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+        }
+        
+        mediaFile.setTitle(rs.getString("title"));
+        mediaFile.setDescription(rs.getString("description"));
+        mediaFile.setPublic(rs.getBoolean("is_public"));
+        
+        // Handle file_hash column - it might not exist in older schema
+        try {
+            mediaFile.setFileHash(rs.getString("file_hash"));
+        } catch (SQLException e) {
+            // Column doesn't exist, that's ok for backward compatibility
+            mediaFile.setFileHash(null);
+        }
+        
+        return mediaFile;
     }
 }

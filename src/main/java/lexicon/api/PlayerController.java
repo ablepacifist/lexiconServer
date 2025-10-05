@@ -1,14 +1,12 @@
 package lexicon.api;
 
-import lexicon.data.ILexiconDatabase;
+import lexicon.logic.PlayerManagerService;
 import lexicon.object.Player;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,6 +14,8 @@ import java.util.Map;
 /**
  * REST Controller for Player management in the Lexicon server
  * Provides full CRUD operations for the unified Player system
+ * IMPORTANT: This controller ONLY communicates with the Logic Layer (PlayerManagerService)
+ * and NEVER directly accesses the Data Layer (Database)
  */
 @RestController
 @RequestMapping("/api/players")
@@ -23,9 +23,7 @@ import java.util.Map;
 public class PlayerController {
 
     @Autowired
-    private ILexiconDatabase lexiconDatabase;
-
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private PlayerManagerService playerManagerService;
 
     /**
      * Get all players
@@ -33,7 +31,7 @@ public class PlayerController {
     @GetMapping
     public ResponseEntity<Collection<Player>> getAllPlayers() {
         try {
-            Collection<Player> players = lexiconDatabase.getAllPlayers();
+            Collection<Player> players = playerManagerService.getAllPlayers();
             return ResponseEntity.ok(players);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -46,7 +44,7 @@ public class PlayerController {
     @GetMapping("/{id}")
     public ResponseEntity<Player> getPlayerById(@PathVariable int id) {
         try {
-            Player player = lexiconDatabase.getPlayer(id);
+            Player player = playerManagerService.getPlayerById(id);
             if (player == null) {
                 return ResponseEntity.notFound().build();
             }
@@ -62,7 +60,7 @@ public class PlayerController {
     @GetMapping("/username/{username}")
     public ResponseEntity<Player> getPlayerByUsername(@PathVariable String username) {
         try {
-            Player player = lexiconDatabase.getPlayerByUsername(username);
+            Player player = playerManagerService.getPlayerByUsername(username);
             if (player == null) {
                 return ResponseEntity.notFound().build();
             }
@@ -90,35 +88,25 @@ public class PlayerController {
                     .body(Map.of("error", "Username and password are required"));
             }
 
-            // Check if username already exists
-            if (lexiconDatabase.getPlayerByUsername(username) != null) {
+            // Use service layer to register player
+            Player newPlayer = playerManagerService.registerPlayer(
+                username.trim(), 
+                password, 
+                email != null ? email.trim() : null, 
+                displayName != null ? displayName.trim() : username.trim()
+            );
+
+            if (newPlayer == null) {
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "Username already exists"));
             }
-
-            // Create new player
-            int newId = lexiconDatabase.getNextPlayerId();
-            String hashedPassword = passwordEncoder.encode(password);
-            
-            Player newPlayer = new Player(
-                newId,
-                username.trim(),
-                hashedPassword,
-                1, // Default level
-                email != null ? email.trim() : null,
-                displayName != null ? displayName.trim() : username.trim(),
-                LocalDateTime.now(),
-                null // lastLoginDate set on first login
-            );
-
-            lexiconDatabase.addPlayer(newPlayer);
 
             // Return success response (without password)
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Player registered successfully");
-            response.put("playerId", newId);
-            response.put("username", username);
+            response.put("playerId", newPlayer.getId());
+            response.put("username", newPlayer.getUsername());
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
@@ -142,30 +130,13 @@ public class PlayerController {
                     .body(Map.of("error", "Username and password are required"));
             }
 
-            Player player = lexiconDatabase.getPlayerByUsername(username);
+            // Use service layer to authenticate player
+            Player player = playerManagerService.authenticatePlayer(username, password);
             if (player == null) {
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "Invalid username or password"));
             }
 
-            // Verify password (handle both plain text and BCrypt for compatibility)
-            boolean passwordMatches = false;
-            if (player.getPassword().startsWith("$2a$")) {
-                // BCrypt encoded password
-                passwordMatches = passwordEncoder.matches(password, player.getPassword());
-            } else {
-                // Plain text password (legacy users)
-                passwordMatches = password.equals(player.getPassword());
-            }
-            
-            if (!passwordMatches) {
-                return ResponseEntity.badRequest()
-                    .body(Map.of("error", "Invalid username or password"));
-            }
-
-            // Update last login date
-            // Note: This would require adding an updateLastLogin method to the database
-            
             // Return success response (without password)
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -192,16 +163,16 @@ public class PlayerController {
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updatePlayer(@PathVariable int id, @RequestBody Map<String, String> request) {
         try {
-            Player existingPlayer = lexiconDatabase.getPlayer(id);
+            Player existingPlayer = playerManagerService.getPlayerById(id);
             if (existingPlayer == null) {
                 return ResponseEntity.notFound().build();
             }
 
-            // For now, we'll return a message that this feature needs database method implementation
-            // In a full implementation, you'd add updatePlayer method to the database interface
+            // For now, we'll return a message that this feature needs service implementation
+            // In a full implementation, you'd add updatePlayer method to the service interface
             
             return ResponseEntity.ok(Map.of(
-                "message", "Update functionality requires database method implementation",
+                "message", "Update functionality requires service method implementation",
                 "playerId", id
             ));
 
@@ -217,16 +188,16 @@ public class PlayerController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deletePlayer(@PathVariable int id) {
         try {
-            Player existingPlayer = lexiconDatabase.getPlayer(id);
+            Player existingPlayer = playerManagerService.getPlayerById(id);
             if (existingPlayer == null) {
                 return ResponseEntity.notFound().build();
             }
 
-            // For now, we'll return a message that this feature needs database method implementation
-            // In a full implementation, you'd add deletePlayer method to the database interface
+            // For now, we'll return a message that this feature needs service implementation
+            // In a full implementation, you'd add deletePlayer method to the service interface
             
             return ResponseEntity.ok(Map.of(
-                "message", "Delete functionality requires database method implementation",
+                "message", "Delete functionality requires service method implementation",
                 "playerId", id
             ));
 
