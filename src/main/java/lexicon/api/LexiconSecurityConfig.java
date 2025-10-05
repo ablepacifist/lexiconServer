@@ -32,6 +32,9 @@ public class LexiconSecurityConfig {
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                .requestMatchers("/api/health", "/api/info").permitAll()
+                .requestMatchers("/api/test/**").permitAll()  // Allow access to test endpoints
+                .requestMatchers("/api/players/**").permitAll()  // Allow access to player endpoints for testing
                 .requestMatchers("/api/media/public/**").permitAll()
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()

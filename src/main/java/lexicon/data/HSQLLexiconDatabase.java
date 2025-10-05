@@ -1,6 +1,6 @@
 package lexicon.data;
 
-import lexicon.object.User;
+import lexicon.object.Player;
 import lexicon.object.MediaFile;
 import org.springframework.stereotype.Repository;
 
@@ -10,22 +10,23 @@ import java.util.*;
 
 /**
  * HSQLDB implementation of the Lexicon database
- * Following the same pattern as Alchemy's HSQLDatabase
+ * Now using unified Player class instead of User
  */
 @Repository
 public class HSQLLexiconDatabase implements ILexiconDatabase {
     
-    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9003/lexicondb";
+    // Connect to the same database as Alchemy server for unified user system
+    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
     
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DATABASE_URL, "SA", "");
     }
     
-    // User management methods
+    // Player management methods
     @Override
-    public int getNextUserId() {
+    public int getNextPlayerId() {
         try (Connection conn = getConnection()) {
-            String sql = "SELECT MAX(id) FROM users";
+            String sql = "SELECT MAX(id) FROM players";
             try (PreparedStatement stmt = conn.prepareStatement(sql);
                  ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -40,36 +41,41 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public void addUser(User user) {
+    public void addPlayer(Player player) {
         try (Connection conn = getConnection()) {
-            String sql = "INSERT INTO users (id, username, password, email, display_name) VALUES (?, ?, ?, ?, ?)";
+            // Use only the columns that exist in the current schema
+            String sql = "INSERT INTO players (id, username, password, level) VALUES (?, ?, ?, ?)";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setInt(1, user.getId());
-                stmt.setString(2, user.getUsername());
-                stmt.setString(3, user.getPassword());
-                stmt.setString(4, user.getEmail());
-                stmt.setString(5, user.getDisplayName());
+                stmt.setInt(1, player.getId());
+                stmt.setString(2, player.getUsername());
+                stmt.setString(3, player.getPassword());
+                stmt.setInt(4, player.getLevel());
                 stmt.executeUpdate();
             }
         } catch (SQLException e) {
             e.printStackTrace();
+            throw new RuntimeException("Failed to add player: " + e.getMessage(), e);
         }
     }
     
     @Override
-    public User getUser(int userId) {
+    public Player getPlayer(int playerId) {
         try (Connection conn = getConnection()) {
-            String sql = "SELECT * FROM users WHERE id = ?";
+            // Use only the columns that exist in the current schema
+            String sql = "SELECT id, username, password, level FROM players WHERE id = ?";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setInt(1, userId);
+                stmt.setInt(1, playerId);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        return new User(
+                        return new Player(
                             rs.getInt("id"),
                             rs.getString("username"),
                             rs.getString("password"),
-                            rs.getString("email"),
-                            rs.getString("display_name")
+                            rs.getInt("level"),
+                            null, // email
+                            rs.getString("username"), // displayName defaults to username
+                            null, // registrationDate
+                            null  // lastLoginDate
                         );
                     }
                 }
@@ -81,19 +87,23 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public User getUserByUsername(String username) {
+    public Player getPlayerByUsername(String username) {
         try (Connection conn = getConnection()) {
-            String sql = "SELECT * FROM users WHERE username = ?";
+            // Use only the columns that definitely exist in the old schema
+            String sql = "SELECT id, username, password, level FROM players WHERE username = ?";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, username);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        return new User(
+                        return new Player(
                             rs.getInt("id"),
                             rs.getString("username"),
                             rs.getString("password"),
-                            rs.getString("email"),
-                            rs.getString("display_name")
+                            rs.getInt("level"),
+                            null, // email
+                            rs.getString("username"), // displayName defaults to username
+                            null, // registrationDate  
+                            null  // lastLoginDate
                         );
                     }
                 }
@@ -105,19 +115,24 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public User getUserByEmail(String email) {
+    public Player getPlayerByEmail(String email) {
         try (Connection conn = getConnection()) {
-            String sql = "SELECT * FROM users WHERE email = ?";
+            String sql = "SELECT * FROM players WHERE email = ?";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, email);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        return new User(
+                        Timestamp regTimestamp = rs.getTimestamp("registration_date");
+                        Timestamp lastLoginTimestamp = rs.getTimestamp("last_login_date");
+                        return new Player(
                             rs.getInt("id"),
                             rs.getString("username"),
                             rs.getString("password"),
+                            rs.getInt("level"),
                             rs.getString("email"),
-                            rs.getString("display_name")
+                            rs.getString("display_name"),
+                            regTimestamp != null ? regTimestamp.toLocalDateTime() : null,
+                            lastLoginTimestamp != null ? lastLoginTimestamp.toLocalDateTime() : null
                         );
                     }
                 }
@@ -129,26 +144,31 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public Collection<User> getAllUsers() {
-        List<User> users = new ArrayList<>();
+    public Collection<Player> getAllPlayers() {
+        List<Player> players = new ArrayList<>();
         try (Connection conn = getConnection()) {
-            String sql = "SELECT * FROM users ORDER BY username";
+            // Use only the columns that definitely exist in the old schema
+            String sql = "SELECT id, username, password, level FROM players ORDER BY username";
             try (PreparedStatement stmt = conn.prepareStatement(sql);
                  ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    users.add(new User(
+                    // Create Player with just the basic fields, null for new fields
+                    players.add(new Player(
                         rs.getInt("id"),
                         rs.getString("username"),
                         rs.getString("password"),
-                        rs.getString("email"),
-                        rs.getString("display_name")
+                        rs.getInt("level"),
+                        null, // email
+                        rs.getString("username"), // displayName defaults to username  
+                        null, // registrationDate
+                        null  // lastLoginDate
                     ));
                 }
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return users;
+        return players;
     }
     
     // Media file management methods (simplified for now)
@@ -199,7 +219,7 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public List<MediaFile> getMediaFilesByUser(int userId) {
+    public List<MediaFile> getMediaFilesByPlayer(int playerId) {
         // Implementation would go here
         return new ArrayList<>(); // TODO: Implement
     }
@@ -217,13 +237,50 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public void updateUser(User user) {
-        // Implementation would go here
+    public void updatePlayer(Player player) {
+        try (Connection conn = getConnection()) {
+            String sql = "UPDATE players SET username = ?, password = ?, email = ?, display_name = ?, level = ?, registration_date = ?, last_login_date = ? WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, player.getUsername());
+                stmt.setString(2, player.getPassword());
+                stmt.setString(3, player.getEmail());
+                stmt.setString(4, player.getDisplayName());
+                stmt.setInt(5, player.getLevel());
+                stmt.setTimestamp(6, player.getRegistrationDate() != null ? Timestamp.valueOf(player.getRegistrationDate()) : null);
+                stmt.setTimestamp(7, player.getLastLoginDate() != null ? Timestamp.valueOf(player.getLastLoginDate()) : null);
+                stmt.setInt(8, player.getId());
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
     
     @Override
-    public void deleteUser(int userId) {
-        // Implementation would go here
+    public void deletePlayer(int playerId) {
+        try (Connection conn = getConnection()) {
+            String sql = "DELETE FROM players WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, playerId);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    @Override
+    public void updatePlayerLastLogin(int playerId, LocalDateTime lastLoginDate) {
+        try (Connection conn = getConnection()) {
+            String sql = "UPDATE players SET last_login_date = ? WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setTimestamp(1, lastLoginDate != null ? Timestamp.valueOf(lastLoginDate) : null);
+                stmt.setInt(2, playerId);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
     
     @Override
@@ -237,13 +294,13 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
-    public boolean userExists(String username) {
-        return getUserByUsername(username) != null;
+    public boolean playerExists(String username) {
+        return getPlayerByUsername(username) != null;
     }
     
     @Override
     public boolean emailExists(String email) {
-        return getUserByEmail(email) != null;
+        return getPlayerByEmail(email) != null;
     }
     
     @Override
