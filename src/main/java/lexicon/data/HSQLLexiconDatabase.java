@@ -1,7 +1,6 @@
 package lexicon.data;
 
 import lexicon.object.Player;
-import lexicon.object.MediaFile;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -10,7 +9,7 @@ import java.util.*;
 
 /**
  * HSQLDB implementation of the Lexicon database
- * Now using unified Player class instead of User
+ * Player management only - media files moved to HSQLMediaDatabase
  */
 @Repository
 public class HSQLLexiconDatabase implements ILexiconDatabase {
@@ -171,71 +170,6 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
         return players;
     }
     
-    // Media file management methods (simplified for now)
-    @Override
-    public int getNextMediaFileId() {
-        try (Connection conn = getConnection()) {
-            String sql = "SELECT MAX(id) FROM media_files";
-            try (PreparedStatement stmt = conn.prepareStatement(sql);
-                 ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1) + 1;
-                }
-                return 1;
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return 1;
-        }
-    }
-    
-    @Override
-    public void addMediaFile(MediaFile mediaFile) {
-        try (Connection conn = getConnection()) {
-            String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                stmt.setInt(1, mediaFile.getId());
-                stmt.setString(2, mediaFile.getFilename());
-                stmt.setString(3, mediaFile.getOriginalFilename());
-                stmt.setString(4, mediaFile.getContentType());
-                stmt.setLong(5, mediaFile.getFileSize());
-                stmt.setString(6, mediaFile.getFilePath());
-                stmt.setInt(7, mediaFile.getUploadedBy());
-                stmt.setTimestamp(8, Timestamp.valueOf(mediaFile.getUploadDate()));
-                stmt.setString(9, mediaFile.getTitle());
-                stmt.setString(10, mediaFile.getDescription());
-                stmt.setBoolean(11, mediaFile.isPublic());
-                stmt.executeUpdate();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-    
-    @Override
-    public MediaFile getMediaFile(int mediaFileId) {
-        // Implementation would go here - similar pattern to getUser
-        return null; // TODO: Implement
-    }
-    
-    @Override
-    public List<MediaFile> getMediaFilesByPlayer(int playerId) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
-    }
-    
-    @Override
-    public List<MediaFile> getAllPublicMediaFiles() {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
-    }
-    
-    @Override
-    public List<MediaFile> searchMediaFiles(String searchTerm) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
-    }
-    
     @Override
     public void updatePlayer(Player player) {
         try (Connection conn = getConnection()) {
@@ -283,15 +217,6 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
         }
     }
     
-    @Override
-    public void updateMediaFile(MediaFile mediaFile) {
-        // Implementation would go here
-    }
-    
-    @Override
-    public void deleteMediaFile(int mediaFileId) {
-        // Implementation would go here
-    }
     
     @Override
     public boolean playerExists(String username) {
@@ -301,11 +226,5 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     @Override
     public boolean emailExists(String email) {
         return getPlayerByEmail(email) != null;
-    }
-    
-    @Override
-    public List<MediaFile> getRecentMediaFiles(int limit) {
-        // Implementation would go here
-        return new ArrayList<>(); // TODO: Implement
     }
 }
