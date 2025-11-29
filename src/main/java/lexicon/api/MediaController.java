@@ -35,10 +35,11 @@ public class MediaController {
             @RequestParam("userId") int userId,
             @RequestParam("title") String title,
             @RequestParam(value = "description", required = false) String description,
-            @RequestParam(value = "isPublic", defaultValue = "false") boolean isPublic) {
+            @RequestParam(value = "isPublic", defaultValue = "false") boolean isPublic,
+            @RequestParam(value = "mediaType", defaultValue = "OTHER") String mediaType) {
         
         try {
-            MediaFile mediaFile = mediaManager.uploadMediaFile(file, userId, title, description, isPublic);
+            MediaFile mediaFile = mediaManager.uploadMediaFile(file, userId, title, description, isPublic, mediaType);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -55,6 +56,43 @@ public class MediaController {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", "Failed to upload file: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+    
+    /**
+     * Upload from a URL using yt-dlp
+     * POST /api/media/upload-from-url
+     * User provides URL and download type, then fills out title/description/mediaType
+     */
+    @PostMapping("/upload-from-url")
+    public ResponseEntity<Map<String, Object>> uploadFromUrl(
+            @RequestParam("url") String url,
+            @RequestParam("userId") int userId,
+            @RequestParam("title") String title,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "isPublic", defaultValue = "false") boolean isPublic,
+            @RequestParam(value = "mediaType", defaultValue = "OTHER") String mediaType,
+            @RequestParam(value = "downloadType", defaultValue = "AUDIO_ONLY") String downloadType) {
+        
+        try {
+            MediaFile mediaFile = mediaManager.uploadMediaFromUrl(url, userId, title, description, isPublic, mediaType, downloadType);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Media downloaded and uploaded successfully");
+            response.put("mediaFile", mediaFile);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to download from URL: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }

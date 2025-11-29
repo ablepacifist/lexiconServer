@@ -1,6 +1,7 @@
 package lexicon.data;
 
 import lexicon.object.MediaFile;
+import lexicon.object.MediaType;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -40,7 +41,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
     @Override
     public void addMediaFile(MediaFile mediaFile) {
         try (Connection conn = getConnection()) {
-            String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO media_files (id, filename, original_filename, content_type, file_size, file_path, uploaded_by, upload_date, title, description, is_public, media_type, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setInt(1, mediaFile.getId());
                 stmt.setString(2, mediaFile.getFilename());
@@ -53,6 +54,8 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setString(9, mediaFile.getTitle());
                 stmt.setString(10, mediaFile.getDescription());
                 stmt.setBoolean(11, mediaFile.isPublic());
+                stmt.setString(12, mediaFile.getMediaType() != null ? mediaFile.getMediaType().name() : "OTHER");
+                stmt.setString(13, mediaFile.getSourceUrl());
                 stmt.executeUpdate();
             }
         } catch (SQLException e) {
@@ -69,25 +72,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setInt(1, mediaFileId);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        MediaFile mediaFile = new MediaFile(
-                            rs.getInt("id"),
-                            rs.getString("filename"),
-                            rs.getString("original_filename"),
-                            rs.getString("content_type"),
-                            rs.getLong("file_size"),
-                            rs.getString("file_path"),
-                            rs.getInt("uploaded_by"),
-                            rs.getString("title"),
-                            rs.getString("description"),
-                            rs.getBoolean("is_public")
-                        );
-                        
-                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
-                        if (uploadTimestamp != null) {
-                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
-                        }
-                        
-                        return mediaFile;
+                        return mapResultSetToMediaFile(rs);
                     }
                 }
             }
@@ -106,25 +91,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setInt(1, playerId);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
-                        MediaFile mediaFile = new MediaFile(
-                            rs.getInt("id"),
-                            rs.getString("filename"),
-                            rs.getString("original_filename"),
-                            rs.getString("content_type"),
-                            rs.getLong("file_size"),
-                            rs.getString("file_path"),
-                            rs.getInt("uploaded_by"),
-                            rs.getString("title"),
-                            rs.getString("description"),
-                            rs.getBoolean("is_public")
-                        );
-                        
-                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
-                        if (uploadTimestamp != null) {
-                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
-                        }
-                        
-                        files.add(mediaFile);
+                        files.add(mapResultSetToMediaFile(rs));
                     }
                 }
             }
@@ -142,25 +109,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
             try (PreparedStatement stmt = conn.prepareStatement(sql);
                  ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    MediaFile mediaFile = new MediaFile(
-                        rs.getInt("id"),
-                        rs.getString("filename"),
-                        rs.getString("original_filename"),
-                        rs.getString("content_type"),
-                        rs.getLong("file_size"),
-                        rs.getString("file_path"),
-                        rs.getInt("uploaded_by"),
-                        rs.getString("title"),
-                        rs.getString("description"),
-                        rs.getBoolean("is_public")
-                    );
-                    
-                    Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
-                    if (uploadTimestamp != null) {
-                        mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
-                    }
-                    
-                    files.add(mediaFile);
+                    files.add(mapResultSetToMediaFile(rs));
                 }
             }
         } catch (SQLException e) {
@@ -180,25 +129,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setString(2, searchPattern);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
-                        MediaFile mediaFile = new MediaFile(
-                            rs.getInt("id"),
-                            rs.getString("filename"),
-                            rs.getString("original_filename"),
-                            rs.getString("content_type"),
-                            rs.getLong("file_size"),
-                            rs.getString("file_path"),
-                            rs.getInt("uploaded_by"),
-                            rs.getString("title"),
-                            rs.getString("description"),
-                            rs.getBoolean("is_public")
-                        );
-                        
-                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
-                        if (uploadTimestamp != null) {
-                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
-                        }
-                        
-                        files.add(mediaFile);
+                        files.add(mapResultSetToMediaFile(rs));
                     }
                 }
             }
@@ -211,7 +142,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
     @Override
     public void updateMediaFile(MediaFile mediaFile) {
         try (Connection conn = getConnection()) {
-            String sql = "UPDATE media_files SET filename = ?, original_filename = ?, content_type = ?, file_size = ?, file_path = ?, title = ?, description = ?, is_public = ? WHERE id = ?";
+            String sql = "UPDATE media_files SET filename = ?, original_filename = ?, content_type = ?, file_size = ?, file_path = ?, title = ?, description = ?, is_public = ?, media_type = ? WHERE id = ?";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setString(1, mediaFile.getFilename());
                 stmt.setString(2, mediaFile.getOriginalFilename());
@@ -221,7 +152,8 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setString(6, mediaFile.getTitle());
                 stmt.setString(7, mediaFile.getDescription());
                 stmt.setBoolean(8, mediaFile.isPublic());
-                stmt.setInt(9, mediaFile.getId());
+                stmt.setString(9, mediaFile.getMediaType() != null ? mediaFile.getMediaType().name() : MediaType.OTHER.name());
+                stmt.setInt(10, mediaFile.getId());
                 stmt.executeUpdate();
             }
         } catch (SQLException e) {
@@ -251,25 +183,7 @@ public class HSQLMediaDatabase implements IMediaDatabase {
                 stmt.setInt(1, limit);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
-                        MediaFile mediaFile = new MediaFile(
-                            rs.getInt("id"),
-                            rs.getString("filename"),
-                            rs.getString("original_filename"),
-                            rs.getString("content_type"),
-                            rs.getLong("file_size"),
-                            rs.getString("file_path"),
-                            rs.getInt("uploaded_by"),
-                            rs.getString("title"),
-                            rs.getString("description"),
-                            rs.getBoolean("is_public")
-                        );
-                        
-                        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
-                        if (uploadTimestamp != null) {
-                            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
-                        }
-                        
-                        files.add(mediaFile);
+                        files.add(mapResultSetToMediaFile(rs));
                     }
                 }
             }
@@ -323,5 +237,38 @@ public class HSQLMediaDatabase implements IMediaDatabase {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * Helper method to map ResultSet to MediaFile object with new fields
+     */
+    private MediaFile mapResultSetToMediaFile(ResultSet rs) throws SQLException {
+        MediaFile mediaFile = new MediaFile(
+            rs.getInt("id"),
+            rs.getString("filename"),
+            rs.getString("original_filename"),
+            rs.getString("content_type"),
+            rs.getLong("file_size"),
+            rs.getString("file_path"),
+            rs.getInt("uploaded_by"),
+            rs.getString("title"),
+            rs.getString("description"),
+            rs.getBoolean("is_public")
+        );
+        
+        Timestamp uploadTimestamp = rs.getTimestamp("upload_date");
+        if (uploadTimestamp != null) {
+            mediaFile.setUploadDate(uploadTimestamp.toLocalDateTime());
+        }
+        
+        // Set new fields
+        String mediaTypeStr = rs.getString("media_type");
+        if (mediaTypeStr != null) {
+            mediaFile.setMediaType(lexicon.object.MediaType.fromString(mediaTypeStr));
+        }
+        
+        mediaFile.setSourceUrl(rs.getString("source_url"));
+        
+        return mediaFile;
     }
 }

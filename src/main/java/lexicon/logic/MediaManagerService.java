@@ -13,7 +13,12 @@ public interface MediaManagerService {
     /**
      * Upload a new media file
      */
-    MediaFile uploadMediaFile(MultipartFile file, int userId, String title, String description, boolean isPublic);
+    MediaFile uploadMediaFile(MultipartFile file, int userId, String title, String description, boolean isPublic, String mediaType);
+    
+    /**
+     * Upload media from a URL using yt-dlp
+     */
+    MediaFile uploadMediaFromUrl(String url, int userId, String title, String description, boolean isPublic, String mediaType, String downloadType);
     
     /**
      * Get media file by ID

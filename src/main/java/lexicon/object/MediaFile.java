@@ -14,6 +14,8 @@ public class MediaFile {
     private String title;
     private String description;
     private boolean isPublic;
+    private MediaType mediaType;
+    private String sourceUrl; // YouTube or external link
     
     public MediaFile() {}
     
@@ -65,6 +67,12 @@ public class MediaFile {
     
     public boolean isPublic() { return isPublic; }
     public void setPublic(boolean isPublic) { this.isPublic = isPublic; }
+    
+    public MediaType getMediaType() { return mediaType; }
+    public void setMediaType(MediaType mediaType) { this.mediaType = mediaType; }
+    
+    public String getSourceUrl() { return sourceUrl; }
+    public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
     
     @Override
     public String toString() {
