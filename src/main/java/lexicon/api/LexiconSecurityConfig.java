@@ -1,5 +1,6 @@
 package lexicon.api;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -10,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.*;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -19,6 +22,9 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class LexiconSecurityConfig {
+
+    @Value("${cors.allowed.origins:http://localhost:3000}")
+    private String allowedOrigins;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -50,18 +56,25 @@ public class LexiconSecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of(
-            "http://localhost:3000",                            // local dev
-            "http://localhost:3001",                            // local dev alt port
-            "http://127.0.0.1:3000",                           // local dev
-            "http://127.0.0.1:3001",                           // local dev alt port
-            "http://group-net.gl.at.ply.gg:58938",             // Frontend tunnel
-            "http://147.185.221.211:58938",                     // Bilbo PC frontend URL
-            "http://see-recover.gl.at.ply.gg:36567"             // Gateway tunnel
-        ));
-
+        
+        // Parse comma-separated allowed origins from environment variable
+        List<String> origins = new ArrayList<>();
+        if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
+            origins.addAll(Arrays.asList(allowedOrigins.split(",")));
+        }
+        
+        // Always add localhost for development
+        if (!origins.contains("http://localhost:3000")) {
+            origins.add("http://localhost:3000");
+        }
+        if (!origins.contains("http://localhost:3001")) {
+            origins.add("http://localhost:3001");
+        }
+        
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
