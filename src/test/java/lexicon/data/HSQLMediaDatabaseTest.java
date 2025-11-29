@@ -17,10 +17,39 @@ import static org.junit.jupiter.api.Assertions.*;
 class HSQLMediaDatabaseTest {
     
     private HSQLMediaDatabase mediaDatabase;
+    private static final int TEST_USER_ID = 16;
     
     @BeforeAll
     void setupDatabase() {
         mediaDatabase = new HSQLMediaDatabase();
+    }
+    
+    @AfterAll
+    void cleanup() {
+        System.out.println("Starting HSQLMediaDatabaseTest cleanup...");
+        
+        // Clean up ALL media files uploaded by TEST_USER_ID (16)
+        try {
+            List<MediaFile> userMedia = mediaDatabase.getMediaFilesByPlayer(TEST_USER_ID);
+            int deletedCount = 0;
+            for (MediaFile media : userMedia) {
+                try {
+                    // Delete file data first
+                    mediaDatabase.deleteFileData(media.getId());
+                    // Then delete the media record
+                    mediaDatabase.deleteMediaFile(media.getId());
+                    deletedCount++;
+                    System.out.println("Deleted test media: " + media.getOriginalFilename() + " (ID: " + media.getId() + ")");
+                } catch (Exception e) {
+                    System.err.println("Could not delete media " + media.getId() + ": " + e.getMessage());
+                }
+            }
+            System.out.println("Deleted " + deletedCount + " test media files for user " + TEST_USER_ID);
+        } catch (Exception e) {
+            System.err.println("Error during media cleanup: " + e.getMessage());
+        }
+        
+        System.out.println("HSQLMediaDatabaseTest cleanup completed");
     }
     
     @Test

@@ -250,6 +250,75 @@ public class MediaController {
     }
 
     /**
+     * Stream media file (supports range requests for audio/video)
+     * GET /api/media/stream/{id}
+     */
+    @GetMapping("/stream/{id}")
+    public ResponseEntity<byte[]> streamFile(
+            @PathVariable int id,
+            @RequestHeader(value = "Range", required = false) String rangeHeader) {
+        try {
+            MediaFile mediaFile = mediaManager.getMediaFileById(id);
+            if (mediaFile == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            byte[] fileData = mediaManager.getFileData(id);
+            if (fileData == null || fileData.length == 0) {
+                return ResponseEntity.noContent().build();
+            }
+            
+            // Parse content type
+            MediaType contentType;
+            try {
+                contentType = MediaType.parseMediaType(mediaFile.getContentType());
+            } catch (Exception e) {
+                // Fallback to octet-stream if content type is invalid
+                contentType = MediaType.APPLICATION_OCTET_STREAM;
+            }
+            
+            // Handle range requests for streaming
+            if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+                try {
+                    String[] ranges = rangeHeader.substring(6).split("-");
+                    long start = Long.parseLong(ranges[0]);
+                    long end = ranges.length > 1 && !ranges[1].isEmpty() 
+                            ? Long.parseLong(ranges[1]) 
+                            : fileData.length - 1;
+                    
+                    // Ensure end doesn't exceed file size
+                    end = Math.min(end, fileData.length - 1);
+                    
+                    int length = (int) (end - start + 1);
+                    byte[] rangeData = new byte[length];
+                    System.arraycopy(fileData, (int) start, rangeData, 0, length);
+                    
+                    return ResponseEntity.status(206) // 206 Partial Content
+                            .contentType(contentType)
+                            .header("Content-Range", "bytes " + start + "-" + end + "/" + fileData.length)
+                            .header("Accept-Ranges", "bytes")
+                            .header("Content-Length", String.valueOf(length))
+                            .body(rangeData);
+                } catch (Exception e) {
+                    // If range parsing fails, return full content
+                    System.err.println("Range parsing error: " + e.getMessage());
+                }
+            }
+            
+            // Return full content if no range or range parsing failed
+            return ResponseEntity.ok()
+                    .contentType(contentType)
+                    .header("Accept-Ranges", "bytes")
+                    .header("Content-Length", String.valueOf(fileData.length))
+                    .body(fileData);
+                    
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
      * Download file data
      * GET /api/media/{id}/download
      */
