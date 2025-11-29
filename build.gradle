@@ -2,6 +2,7 @@ plugins {
     id 'org.springframework.boot' version '3.1.4'
     id 'io.spring.dependency-management' version '1.1.0'
     id 'java'
+    id 'jacoco'
 }
 
 group = 'my.lexicon'
@@ -37,4 +38,27 @@ springBoot {
 // Use the JUnit Platform for tests (recommended when using Spring Boot Starter Test)
 test {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport // Generate coverage report after tests run
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+jacocoTestReport {
+    dependsOn test // Tests are required to run before generating the report
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                '**/LexiconApplication.class',
+                '**/LexiconSecurityConfig.class',
+                '**/LexiconTestController.class'
+            ])
+        }))
+    }
 }
