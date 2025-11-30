@@ -75,37 +75,45 @@ public class YtDlpService {
         // Use the latest yt-dlp from /usr/local/bin (updated version)
         command.add("/usr/local/bin/yt-dlp");
         
-        // Add cookies if available (helps bypass YouTube bot detection)
-        if (cookiesPath != null && !cookiesPath.isEmpty()) {
-            File cookiesFile = new File(cookiesPath);
-            if (cookiesFile.exists()) {
-                command.add("--cookies");
-                command.add(cookiesFile.getAbsolutePath());
-                System.out.println("Using YouTube cookies from: " + cookiesFile.getAbsolutePath());
-            } else {
-                System.err.println("Warning: Cookies file not found at: " + cookiesPath);
-            }
-        } else {
-            System.out.println("No cookies file configured, YouTube may block downloads");
-        }
+        // Don't use cookies - they cause issues from different networks
+        // Instead, use extractor args for better YouTube compatibility
+        command.add("--extractor-args");
+        command.add("youtube:player_client=android");
+        
+        // Skip unavailable fragments (helps with live streams and problematic videos)
+        command.add("--skip-unavailable-fragments");
         
         // Add user agent to help bypass restrictions
         command.add("--user-agent");
         command.add("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36");
         
-        // Set format based on download type with simpler format selection
+        // Add referer header for better compatibility
+        command.add("--add-header");
+        command.add("Referer:https://www.youtube.com/");
+        
+        // Add network retry options for remote connections
+        command.add("--retries");
+        command.add("10");
+        command.add("--fragment-retries");
+        command.add("10");
+        command.add("--retry-sleep");
+        command.add("3");
+        
+        // Ignore errors for unavailable formats and try alternatives
+        command.add("--ignore-errors");
+        
+        // Set format based on download type with more robust format selection
         if (downloadType == DownloadType.AUDIO_ONLY) {
+            // Extract audio - let yt-dlp choose the best available format automatically
             command.add("-x"); // Extract audio
             command.add("--audio-format");
             command.add("mp3");
             command.add("--audio-quality");
             command.add("0"); // Best quality
         } else {
-            // Use simpler format selection that doesn't require JavaScript runtime
+            // For video, just use 'best' - yt-dlp will figure out the best available format
             command.add("-f");
-            command.add("best[ext=mp4]/best");
-            command.add("--merge-output-format");
-            command.add("mp4");
+            command.add("best");
         }
         
         // Additional options for better compatibility

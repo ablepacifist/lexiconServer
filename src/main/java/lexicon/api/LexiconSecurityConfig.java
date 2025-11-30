@@ -71,6 +71,11 @@ public class LexiconSecurityConfig {
             origins.add("http://localhost:3001");
         }
         
+        // Log the configured origins for debugging
+        System.out.println("=== CORS Configuration ===");
+        System.out.println("Configured origins: " + origins);
+        System.out.println("========================");
+        
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

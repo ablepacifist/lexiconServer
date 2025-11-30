@@ -41,9 +41,45 @@ public class PlaylistController {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to create playlist");
             }
         } catch (IllegalArgumentException e) {
+            System.err.println("Playlist creation validation error: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error creating playlist");
+            System.err.println("Playlist creation error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error creating playlist: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get playlists by query parameter (alternative endpoint)
+     * Supports GET /api/playlists?userId=X
+     */
+    @GetMapping
+    public ResponseEntity<?> getPlaylistsByUserId(@RequestParam(value = "userId", required = false) Integer userId) {
+        if (userId == null) {
+            // If no userId provided, return public playlists
+            try {
+                List<Playlist> playlists = playlistManager.getPublicPlaylists();
+                return ResponseEntity.ok(playlists);
+            } catch (Exception e) {
+                System.err.println("Error fetching public playlists: " + e.getMessage());
+                e.printStackTrace();
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error fetching public playlists: " + e.getMessage());
+            }
+        }
+        
+        // Return user's playlists
+        try {
+            List<Playlist> playlists = playlistManager.getPlaylistsByUser(userId);
+            return ResponseEntity.ok(playlists);
+        } catch (Exception e) {
+            System.err.println("Error fetching user playlists: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error fetching playlists: " + e.getMessage());
         }
     }
     
@@ -57,8 +93,15 @@ public class PlaylistController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User ID required");
         }
         
-        List<Playlist> playlists = playlistManager.getPlaylistsByUser(userId);
-        return ResponseEntity.ok(playlists);
+        try {
+            List<Playlist> playlists = playlistManager.getPlaylistsByUser(userId);
+            return ResponseEntity.ok(playlists);
+        } catch (Exception e) {
+            System.err.println("Error fetching user playlists: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error fetching playlists: " + e.getMessage());
+        }
     }
     
     /**
@@ -66,8 +109,15 @@ public class PlaylistController {
      */
     @GetMapping("/public")
     public ResponseEntity<?> getPublicPlaylists() {
-        List<Playlist> playlists = playlistManager.getPublicPlaylists();
-        return ResponseEntity.ok(playlists);
+        try {
+            List<Playlist> playlists = playlistManager.getPublicPlaylists();
+            return ResponseEntity.ok(playlists);
+        } catch (Exception e) {
+            System.err.println("Error fetching public playlists: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error fetching public playlists: " + e.getMessage());
+        }
     }
     
     /**
@@ -75,13 +125,20 @@ public class PlaylistController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> getPlaylist(@PathVariable int id) {
-        Playlist playlist = playlistManager.getPlaylistWithItems(id);
-        
-        if (playlist == null) {
-            return ResponseEntity.notFound().build();
+        try {
+            Playlist playlist = playlistManager.getPlaylistWithItems(id);
+            
+            if (playlist == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            return ResponseEntity.ok(playlist);
+        } catch (Exception e) {
+            System.err.println("Error fetching playlist " + id + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error fetching playlist: " + e.getMessage());
         }
-        
-        return ResponseEntity.ok(playlist);
     }
     
     /**
