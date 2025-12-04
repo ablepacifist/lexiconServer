@@ -5,6 +5,7 @@ import lexicon.data.IMediaDatabase;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.service.YtDlpService;
+import lexicon.service.VideoTranscodingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -36,6 +37,9 @@ class MediaManagerTest {
     private YtDlpService ytDlpService;
     
     @Mock
+    private VideoTranscodingService videoTranscodingService;
+    
+    @Mock
     private MultipartFile mockFile;
     
     private MediaManager mediaManager;
@@ -43,7 +47,7 @@ class MediaManagerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        mediaManager = new MediaManager(playerDatabase, mediaDatabase, ytDlpService);
+        mediaManager = new MediaManager(playerDatabase, mediaDatabase, ytDlpService, videoTranscodingService);
     }
     
     @Test

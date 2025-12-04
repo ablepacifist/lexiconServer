@@ -1,6 +1,7 @@
 package lexicon.data;
 
 import lexicon.object.MediaFile;
+import lexicon.object.PlaybackPosition;
 import java.util.List;
 
 /**
@@ -24,4 +25,10 @@ public interface IMediaDatabase {
     void storeFileData(int mediaFileId, byte[] fileData);
     byte[] getFileData(int mediaFileId);
     void deleteFileData(int mediaFileId);
+    
+    // Playback position tracking (for audiobooks)
+    void savePlaybackPosition(PlaybackPosition position);
+    PlaybackPosition getPlaybackPosition(int userId, int mediaFileId);
+    List<PlaybackPosition> getUserPlaybackPositions(int userId);
+    void deletePlaybackPosition(int userId, int mediaFileId);
 }

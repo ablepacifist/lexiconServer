@@ -5,6 +5,7 @@ import lexicon.data.IMediaDatabase;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.service.YtDlpService;
+import lexicon.service.VideoTranscodingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,12 +29,15 @@ public class MediaManager implements MediaManagerService {
     private final ILexiconDatabase playerDatabase;
     private final IMediaDatabase mediaDatabase;
     private final YtDlpService ytDlpService;
+    private final VideoTranscodingService transcodingService;
     
     @Autowired
-    public MediaManager(ILexiconDatabase playerDatabase, IMediaDatabase mediaDatabase, YtDlpService ytDlpService) {
+    public MediaManager(ILexiconDatabase playerDatabase, IMediaDatabase mediaDatabase, 
+                       YtDlpService ytDlpService, VideoTranscodingService transcodingService) {
         this.playerDatabase = playerDatabase;
         this.mediaDatabase = mediaDatabase;
         this.ytDlpService = ytDlpService;
+        this.transcodingService = transcodingService;
     }
     
     @Override
@@ -72,6 +77,11 @@ public class MediaManager implements MediaManagerService {
             // Store the actual file data
             byte[] fileData = file.getBytes();
             mediaDatabase.storeFileData(id, fileData);
+            
+            // Transcode video if needed (async in production, sync for now)
+            if (MediaType.fromString(mediaType) == MediaType.VIDEO) {
+                transcodeVideoIfNeeded(id, file.getOriginalFilename(), fileData);
+            }
             
             return mediaFile;
         } catch (Exception e) {
@@ -238,5 +248,86 @@ public class MediaManager implements MediaManagerService {
     @Override
     public byte[] getFileData(int mediaFileId) {
         return mediaDatabase.getFileData(mediaFileId);
+    }
+    
+    /**
+     * Transcodes video files to optimized H.264/AAC MP4 format if FFmpeg is available
+     * and the file is a video. Stores the transcoded version back to the database.
+     */
+    private void transcodeVideoIfNeeded(int mediaFileId, String filename, byte[] originalFileData) {
+        // Skip if not a video file
+        if (!transcodingService.isVideoFile(filename)) {
+            return;
+        }
+        
+        // Skip if FFmpeg not available
+        if (!transcodingService.isFFmpegAvailable()) {
+            System.out.println("FFmpeg not available - skipping transcoding for: " + filename);
+            return;
+        }
+        
+        // Skip if video doesn't need transcoding (already H.264 MP4)
+        if (!transcodingService.needsTranscoding(filename)) {
+            System.out.println("Video already optimized - skipping transcoding for: " + filename);
+            return;
+        }
+        
+        Path inputPath = null;
+        Path outputPath = null;
+        
+        try {
+            // Create temp files for transcoding
+            inputPath = Files.createTempFile("video_input_", "_" + filename);
+            String transcodedFilename = transcodingService.generateTranscodedFilename(filename);
+            outputPath = Files.createTempFile("video_output_", "_" + transcodedFilename);
+            
+            // Write original video to temp file
+            Files.write(inputPath, originalFileData);
+            
+            System.out.println("Starting video transcoding for: " + filename);
+            
+            // Transcode video using FFmpeg
+            boolean success = transcodingService.transcodeVideo(
+                inputPath.toString(),
+                outputPath.toString(),
+                1920 // max width
+            );
+            
+            if (success) {
+                // Read transcoded video bytes
+                byte[] transcodedData = Files.readAllBytes(outputPath);
+                
+                // Store transcoded version back to database (replaces original)
+                mediaDatabase.storeFileData(mediaFileId, transcodedData);
+                
+                long originalSize = originalFileData.length;
+                long transcodedSize = transcodedData.length;
+                double compressionRatio = (1.0 - (double) transcodedSize / originalSize) * 100;
+                
+                System.out.println("Video transcoding complete for: " + filename);
+                System.out.println("Original size: " + originalSize + " bytes");
+                System.out.println("Transcoded size: " + transcodedSize + " bytes");
+                System.out.println("Compression: " + String.format("%.1f", compressionRatio) + "%");
+            } else {
+                System.err.println("Video transcoding failed for: " + filename);
+            }
+            
+        } catch (IOException e) {
+            System.err.println("Error during video transcoding for: " + filename);
+            e.printStackTrace();
+            // Don't fail the upload if transcoding fails - original is already stored
+        } finally {
+            // Clean up temp files
+            try {
+                if (inputPath != null) {
+                    Files.deleteIfExists(inputPath);
+                }
+                if (outputPath != null) {
+                    Files.deleteIfExists(outputPath);
+                }
+            } catch (IOException e) {
+                System.err.println("Error cleaning up temp files: " + e.getMessage());
+            }
+        }
     }
 }

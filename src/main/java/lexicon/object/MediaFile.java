@@ -1,5 +1,6 @@
 package lexicon.object;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
 
 public class MediaFile {
@@ -65,7 +66,10 @@ public class MediaFile {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     
+    @JsonProperty("isPublic")
     public boolean isPublic() { return isPublic; }
+    
+    @JsonProperty("isPublic")
     public void setPublic(boolean isPublic) { this.isPublic = isPublic; }
     
     public MediaType getMediaType() { return mediaType; }

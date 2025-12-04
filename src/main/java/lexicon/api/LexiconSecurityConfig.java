@@ -43,6 +43,7 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/players/**").permitAll()  // Allow access to player endpoints for testing
                 .requestMatchers("/api/media/**").permitAll()  // Allow access to media endpoints for testing
                 .requestMatchers("/api/playlists/**").permitAll()  // Allow access to playlist endpoints
+                .requestMatchers("/api/playback/**").permitAll()  // Allow access to playback position endpoints
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )

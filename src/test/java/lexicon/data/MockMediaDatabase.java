@@ -1,6 +1,7 @@
 package lexicon.data;
 
 import lexicon.object.MediaFile;
+import lexicon.object.PlaybackPosition;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -13,6 +14,7 @@ public class MockMediaDatabase implements IMediaDatabase {
     
     private final Map<Integer, MediaFile> mediaFiles = new ConcurrentHashMap<>();
     private final Map<Integer, byte[]> fileData = new ConcurrentHashMap<>();
+    private final Map<String, PlaybackPosition> playbackPositions = new ConcurrentHashMap<>();
     private int nextMediaFileId = 1;
     
     @Override
@@ -98,10 +100,40 @@ public class MockMediaDatabase implements IMediaDatabase {
         fileData.remove(mediaFileId);
     }
     
+    @Override
+    public void savePlaybackPosition(PlaybackPosition position) {
+        if (position == null) {
+            throw new IllegalArgumentException("PlaybackPosition cannot be null");
+        }
+        String key = position.getUserId() + "_" + position.getMediaFileId();
+        playbackPositions.put(key, position);
+    }
+    
+    @Override
+    public PlaybackPosition getPlaybackPosition(int userId, int mediaFileId) {
+        String key = userId + "_" + mediaFileId;
+        return playbackPositions.get(key);
+    }
+    
+    @Override
+    public List<PlaybackPosition> getUserPlaybackPositions(int userId) {
+        return playbackPositions.values().stream()
+                .filter(p -> p.getUserId() == userId)
+                .sorted((a, b) -> b.getLastUpdated().compareTo(a.getLastUpdated()))
+                .collect(Collectors.toList());
+    }
+    
+    @Override
+    public void deletePlaybackPosition(int userId, int mediaFileId) {
+        String key = userId + "_" + mediaFileId;
+        playbackPositions.remove(key);
+    }
+    
     // Utility method for tests
     public void clear() {
         mediaFiles.clear();
         fileData.clear();
+        playbackPositions.clear();
         nextMediaFileId = 1;
     }
 }

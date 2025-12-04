@@ -2,6 +2,7 @@ package lexicon.data;
 
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
+import lexicon.object.PlaybackPosition;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -270,5 +271,147 @@ public class HSQLMediaDatabase implements IMediaDatabase {
         mediaFile.setSourceUrl(rs.getString("source_url"));
         
         return mediaFile;
+    }
+    
+    // ==================== Playback Position Tracking ====================
+    
+    @Override
+    public void savePlaybackPosition(PlaybackPosition position) {
+        Connection conn = null;
+        try {
+            conn = getConnection();
+            conn.setAutoCommit(false);  // Start transaction
+            
+            // Check if position already exists
+            String checkSql = "SELECT id FROM playback_positions WHERE user_id = ? AND media_file_id = ?";
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+                checkStmt.setInt(1, position.getUserId());
+                checkStmt.setInt(2, position.getMediaFileId());
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) {
+                        // Update existing position
+                        String updateSql = "UPDATE playback_positions SET position = ?, duration = ?, last_updated = ?, completed = ? WHERE user_id = ? AND media_file_id = ?";
+                        try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+                            updateStmt.setDouble(1, position.getPosition());
+                            updateStmt.setDouble(2, position.getDuration());
+                            updateStmt.setTimestamp(3, Timestamp.valueOf(java.time.LocalDateTime.now()));
+                            updateStmt.setBoolean(4, position.isCompleted());
+                            updateStmt.setInt(5, position.getUserId());
+                            updateStmt.setInt(6, position.getMediaFileId());
+                            updateStmt.executeUpdate();
+                        }
+                    } else {
+                        // Insert new position
+                        String insertSql = "INSERT INTO playback_positions (user_id, media_file_id, position, duration, last_updated, completed) VALUES (?, ?, ?, ?, ?, ?)";
+                        try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                            insertStmt.setInt(1, position.getUserId());
+                            insertStmt.setInt(2, position.getMediaFileId());
+                            insertStmt.setDouble(3, position.getPosition());
+                            insertStmt.setDouble(4, position.getDuration());
+                            insertStmt.setTimestamp(5, Timestamp.valueOf(java.time.LocalDateTime.now()));
+                            insertStmt.setBoolean(6, position.isCompleted());
+                            insertStmt.executeUpdate();
+                        }
+                    }
+                }
+            }
+            
+            conn.commit();  // Commit transaction
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();  // Rollback on error
+                } catch (SQLException rollbackEx) {
+                    rollbackEx.printStackTrace();
+                }
+            }
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException closeEx) {
+                    closeEx.printStackTrace();
+                }
+            }
+        }
+    }
+    
+    @Override
+    public PlaybackPosition getPlaybackPosition(int userId, int mediaFileId) {
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM playback_positions WHERE user_id = ? AND media_file_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, userId);
+                stmt.setInt(2, mediaFileId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        PlaybackPosition position = new PlaybackPosition();
+                        position.setId(rs.getInt("id"));
+                        position.setUserId(rs.getInt("user_id"));
+                        position.setMediaFileId(rs.getInt("media_file_id"));
+                        position.setPosition(rs.getDouble("position"));
+                        position.setDuration(rs.getDouble("duration"));
+                        
+                        Timestamp lastUpdated = rs.getTimestamp("last_updated");
+                        if (lastUpdated != null) {
+                            position.setLastUpdated(lastUpdated.toLocalDateTime());
+                        }
+                        
+                        position.setCompleted(rs.getBoolean("completed"));
+                        return position;
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+    
+    @Override
+    public List<PlaybackPosition> getUserPlaybackPositions(int userId) {
+        List<PlaybackPosition> positions = new ArrayList<>();
+        try (Connection conn = getConnection()) {
+            String sql = "SELECT * FROM playback_positions WHERE user_id = ? ORDER BY last_updated DESC";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, userId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        PlaybackPosition position = new PlaybackPosition();
+                        position.setId(rs.getInt("id"));
+                        position.setUserId(rs.getInt("user_id"));
+                        position.setMediaFileId(rs.getInt("media_file_id"));
+                        position.setPosition(rs.getDouble("position"));
+                        position.setDuration(rs.getDouble("duration"));
+                        
+                        Timestamp lastUpdated = rs.getTimestamp("last_updated");
+                        if (lastUpdated != null) {
+                            position.setLastUpdated(lastUpdated.toLocalDateTime());
+                        }
+                        
+                        position.setCompleted(rs.getBoolean("completed"));
+                        positions.add(position);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return positions;
+    }
+    
+    @Override
+    public void deletePlaybackPosition(int userId, int mediaFileId) {
+        try (Connection conn = getConnection()) {
+            String sql = "DELETE FROM playback_positions WHERE user_id = ? AND media_file_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, userId);
+                stmt.setInt(2, mediaFileId);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 }
