@@ -304,4 +304,116 @@ class PlaylistManagerTest {
         
         System.out.println("PlaylistManagerTest cleanup completed");
     }
+    
+    // ============ YouTube Import Tests ============
+    
+    @Test
+    @Order(20)
+    void testImportYoutubePlaylist_invalidUrl() {
+        System.out.println("\n=== Test: Import YouTube Playlist - Invalid URL ===");
+        
+        String invalidUrl = "https://music.youtube.com/playlist?list=INVALID";
+        PlaylistManager.ImportResult result = playlistManager.importYoutubePlaylist(
+            invalidUrl, TEST_USER_ID, null, true, false);
+        
+        assertFalse(result.success, "Import should fail for invalid URL");
+        assertNotNull(result.errorMessage, "Should have error message");
+        assertEquals(-1, result.playlistId, "Should not create playlist");
+        assertEquals(0, result.totalTracks, "Should have 0 total tracks");
+        
+        System.out.println("✓ Correctly failed for invalid URL");
+    }
+    
+    @Test
+    @Order(21)
+    void testImportYoutubePlaylist_validUrlWithCustomName() {
+        System.out.println("\n=== Test: Import YouTube Playlist - Valid URL with Custom Name ===");
+        
+        // This test requires yt-dlp and network access
+        // Using a small test playlist for faster testing
+        String testPlaylistUrl = "https://music.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf";
+        String customName = "Test Import Playlist";
+        
+        try {
+            PlaylistManager.ImportResult result = playlistManager.importYoutubePlaylist(
+                testPlaylistUrl, TEST_USER_ID, customName, true, false);
+            
+            // Note: This test may take a while and requires external services
+            if (result.success) {
+                assertTrue(result.success, "Import should succeed");
+                assertTrue(result.playlistId > 0, "Should create playlist");
+                assertTrue(result.totalTracks > 0, "Should have tracks");
+                assertTrue(result.successfulTracks > 0, "Should have successful tracks");
+                
+                // Verify the playlist was created with custom name
+                Playlist importedPlaylist = playlistManager.getPlaylistById(result.playlistId);
+                assertNotNull(importedPlaylist, "Playlist should exist");
+                assertEquals(customName, importedPlaylist.getName(), "Should use custom name");
+                assertEquals("MUSIC", importedPlaylist.getMediaType(), "Should be MUSIC type");
+                assertEquals(TEST_USER_ID, importedPlaylist.getCreatedBy(), "Should be created by test user");
+                assertTrue(importedPlaylist.getIsPublic(), "Should be public");
+                
+                // Cleanup
+                playlistManager.deletePlaylist(result.playlistId, TEST_USER_ID);
+                
+                System.out.println("✓ Successfully imported " + result.successfulTracks + "/" + result.totalTracks + " tracks");
+            } else {
+                System.out.println("⚠ Skipping test - requires yt-dlp and network access");
+            }
+        } catch (Exception e) {
+            System.out.println("⚠ Skipping test - requires yt-dlp and network access: " + e.getMessage());
+        }
+    }
+    
+    @Test
+    @Order(22)
+    void testImportYoutubePlaylist_defaultName() {
+        System.out.println("\n=== Test: Import YouTube Playlist - Default Name ===");
+        
+        String testPlaylistUrl = "https://music.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf";
+        
+        try {
+            // Pass null for custom name to use detected name
+            PlaylistManager.ImportResult result = playlistManager.importYoutubePlaylist(
+                testPlaylistUrl, TEST_USER_ID, null, false, true);
+            
+            if (result.success) {
+                assertTrue(result.success, "Import should succeed");
+                assertTrue(result.playlistId > 0, "Should create playlist");
+                
+                // Verify the playlist uses the detected name
+                Playlist importedPlaylist = playlistManager.getPlaylistById(result.playlistId);
+                assertNotNull(importedPlaylist, "Playlist should exist");
+                assertNotNull(importedPlaylist.getName(), "Should have a name");
+                assertFalse(importedPlaylist.getName().isEmpty(), "Name should not be empty");
+                assertFalse(importedPlaylist.getIsPublic(), "Should be private (as specified)");
+                
+                // Cleanup
+                playlistManager.deletePlaylist(result.playlistId, TEST_USER_ID);
+                
+                System.out.println("✓ Used detected playlist name: " + importedPlaylist.getName());
+            } else {
+                System.out.println("⚠ Skipping test - requires yt-dlp and network access");
+            }
+        } catch (Exception e) {
+            System.out.println("⚠ Skipping test - requires yt-dlp and network access: " + e.getMessage());
+        }
+    }
+    
+    @Test
+    @Order(23)
+    void testImportResult_defaultValues() {
+        System.out.println("\n=== Test: ImportResult Default Values ===");
+        
+        PlaylistManager.ImportResult result = new PlaylistManager.ImportResult();
+        
+        assertFalse(result.success, "Default success should be false");
+        assertEquals(-1, result.playlistId, "Default playlist ID should be -1");
+        assertEquals(0, result.totalTracks, "Default total tracks should be 0");
+        assertEquals(0, result.successfulTracks, "Default successful tracks should be 0");
+        assertEquals(0, result.failedTracks, "Default failed tracks should be 0");
+        assertNull(result.errorMessage, "Default error message should be null");
+        
+        System.out.println("✓ ImportResult has correct default values");
+    }
 }

@@ -36,6 +36,19 @@ public class PlaylistController {
             
             if (playlistId > 0) {
                 playlist.setId(playlistId);
+                
+                // Add media files if provided
+                if (playlist.getMediaFileIds() != null && !playlist.getMediaFileIds().isEmpty()) {
+                    System.out.println("Adding " + playlist.getMediaFileIds().size() + " items to playlist " + playlistId);
+                    for (Integer mediaFileId : playlist.getMediaFileIds()) {
+                        System.out.println("  Adding media file " + mediaFileId);
+                        boolean added = playlistManager.addItemToPlaylist(playlistId, mediaFileId, userId);
+                        System.out.println("  Result: " + added);
+                    }
+                } else {
+                    System.out.println("No mediaFileIds provided for playlist " + playlistId);
+                }
+                
                 return ResponseEntity.ok(playlist);
             } else {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to create playlist");
@@ -288,6 +301,45 @@ public class PlaylistController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error reordering playlist");
+        }
+    }
+    
+    /**
+     * Import a YouTube playlist
+     * POST /api/playlists/import-youtube
+     */
+    @PostMapping("/import-youtube")
+    public ResponseEntity<?> importYoutubePlaylist(
+            @RequestParam("url") String playlistUrl,
+            @RequestParam("userId") Integer userId,
+            @RequestParam(value = "playlistName", required = false) String playlistName,
+            @RequestParam(value = "isPublic", defaultValue = "true") Boolean isPublic,
+            @RequestParam(value = "mediaIsPublic", defaultValue = "false") Boolean mediaIsPublic) {
+        
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User ID required");
+        }
+        
+        if (playlistUrl == null || playlistUrl.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Playlist URL is required");
+        }
+        
+        try {
+            Map<String, Object> response = new java.util.HashMap<>();
+            response.put("status", "processing");
+            response.put("message", "Playlist import started");
+            
+            // Start background task
+            new Thread(() -> {
+                playlistManager.importYoutubePlaylist(playlistUrl, userId, playlistName, isPublic, mediaIsPublic);
+            }).start();
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("Error starting playlist import: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error starting playlist import: " + e.getMessage());
         }
     }
 }

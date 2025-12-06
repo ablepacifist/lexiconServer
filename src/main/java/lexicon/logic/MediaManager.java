@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -208,6 +209,33 @@ public class MediaManager implements MediaManagerService {
         }
         
         mediaDatabase.updateMediaFile(mediaFile);
+        return true;
+    }
+    
+    public boolean updateMediaFile(int mediaFileId, int userId, Map<String, Object> updates) {
+        // Verify file exists
+        MediaFile existing = mediaDatabase.getMediaFile(mediaFileId);
+        if (existing == null) {
+            return false;
+        }
+        
+        // Only owner can edit
+        if (existing.getUploadedBy() != userId) {
+            return false;
+        }
+        
+        // Update only the allowed fields
+        if (updates.containsKey("title")) {
+            existing.setTitle((String) updates.get("title"));
+        }
+        if (updates.containsKey("description")) {
+            existing.setDescription((String) updates.get("description"));
+        }
+        if (updates.containsKey("isPublic")) {
+            existing.setPublic((Boolean) updates.get("isPublic"));
+        }
+        
+        mediaDatabase.updateMediaFile(existing);
         return true;
     }
     

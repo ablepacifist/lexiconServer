@@ -3,6 +3,7 @@ package lexicon.logic;
 import lexicon.object.MediaFile;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Service interface for media file management
@@ -49,6 +50,11 @@ public interface MediaManagerService {
      * Update media file information
      */
     boolean updateMediaFile(MediaFile mediaFile);
+    
+    /**
+     * Update media file metadata (title, description, isPublic)
+     */
+    boolean updateMediaFile(int mediaFileId, int userId, Map<String, Object> updates);
     
     /**
      * Delete a media file

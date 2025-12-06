@@ -173,15 +173,15 @@ public class MediaController {
 
     /**
      * Update media file metadata
-     * PUT /api/media/{id}
+     * PUT /api/media/{id}?userId=123
      */
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updateMediaFile(
             @PathVariable int id,
-            @RequestBody MediaFile mediaFile) {
+            @RequestParam int userId,
+            @RequestBody Map<String, Object> updates) {
         try {
-            mediaFile.setId(id);
-            boolean updated = mediaManager.updateMediaFile(mediaFile);
+            boolean updated = mediaManager.updateMediaFile(id, userId, updates);
             
             Map<String, Object> response = new HashMap<>();
             if (updated) {
@@ -190,8 +190,8 @@ public class MediaController {
                 return ResponseEntity.ok(response);
             } else {
                 response.put("success", false);
-                response.put("message", "Media file not found");
-                return ResponseEntity.notFound().build();
+                response.put("message", "Media file not found or permission denied");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();

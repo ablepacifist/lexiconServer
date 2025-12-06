@@ -17,6 +17,7 @@ public class Playlist {
     private LocalDateTime createdDate;
     private MediaType mediaType; // MUSIC, VIDEO, AUDIOBOOK
     private List<PlaylistItem> items;
+    private List<Integer> mediaFileIds; // Transient field for bulk creation
     
     public Playlist() {
         this.items = new ArrayList<>();
@@ -60,6 +61,9 @@ public class Playlist {
     
     public List<PlaylistItem> getItems() { return items; }
     public void setItems(List<PlaylistItem> items) { this.items = items; }
+    
+    public List<Integer> getMediaFileIds() { return mediaFileIds; }
+    public void setMediaFileIds(List<Integer> mediaFileIds) { this.mediaFileIds = mediaFileIds; }
     
     public void addItem(PlaylistItem item) {
         this.items.add(item);
