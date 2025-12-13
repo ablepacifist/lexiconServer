@@ -4,6 +4,7 @@ import lexicon.data.ILexiconDatabase;
 import lexicon.data.IMediaDatabase;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
+import lexicon.object.StreamResult;
 import lexicon.service.YtDlpService;
 import lexicon.service.VideoTranscodingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -358,4 +359,67 @@ public class MediaManager implements MediaManagerService {
             }
         }
     }
+    
+    /**
+     * Get file data for streaming with Range request support
+     * Handles parsing and validation of byte ranges
+     * 
+     * @param mediaFileId The media file ID
+     * @param rangeHeader The HTTP Range header value (e.g., "bytes=0-1023") or null
+     * @return StreamResult containing the requested byte range and metadata
+     */
+    @Override
+    public StreamResult getStreamData(int mediaFileId, String rangeHeader) {
+        System.out.println("=== getStreamData called for mediaFileId: " + mediaFileId + " ===");
+        
+        MediaFile mediaFile = mediaDatabase.getMediaFile(mediaFileId);
+        System.out.println("MediaFile from DB: " + (mediaFile != null ? "FOUND" : "NULL"));
+        
+        if (mediaFile == null) {
+            System.out.println("Returning null - mediaFile is null");
+            return null;
+        }
+        
+        byte[] fileData = mediaDatabase.getFileData(mediaFileId);
+        System.out.println("File data from DB: " + (fileData != null ? fileData.length + " bytes" : "NULL"));
+        
+        if (fileData == null || fileData.length == 0) {
+            System.out.println("Returning null - fileData is " + (fileData == null ? "null" : "empty"));
+            return null;
+        }
+        
+        long fileSize = fileData.length;
+        long start = 0;
+        long end = fileSize - 1;
+        boolean isPartialContent = false;
+        
+        // Parse Range header if present (e.g., "bytes=0-1023")
+        if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+            isPartialContent = true;
+            String[] ranges = rangeHeader.substring(6).split("-");
+            try {
+                start = Long.parseLong(ranges[0]);
+                if (ranges.length > 1 && !ranges[1].isEmpty()) {
+                    end = Long.parseLong(ranges[1]);
+                }
+            } catch (NumberFormatException e) {
+                // Invalid range format - return error indicator with negative start
+                return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+            }
+        }
+        
+        // Validate range
+        if (start > end || start < 0 || end >= fileSize) {
+            // Invalid range - return error indicator with negative start
+            return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+        }
+        
+        // Extract requested range
+        long contentLength = end - start + 1;
+        byte[] rangeData = new byte[(int) contentLength];
+        System.arraycopy(fileData, (int) start, rangeData, 0, (int) contentLength);
+        
+        return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());
+    }
 }
+

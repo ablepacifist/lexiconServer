@@ -1,6 +1,7 @@
 package lexicon.logic;
 
 import lexicon.object.MediaFile;
+import lexicon.object.StreamResult;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.Map;
@@ -70,4 +71,9 @@ public interface MediaManagerService {
      * Get file data for download
      */
     byte[] getFileData(int mediaFileId);
+    
+    /**
+     * Get file data for streaming with Range request support
+     */
+    StreamResult getStreamData(int mediaFileId, String rangeHeader);
 }
