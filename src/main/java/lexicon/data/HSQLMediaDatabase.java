@@ -165,8 +165,16 @@ public class HSQLMediaDatabase implements IMediaDatabase {
     @Override
     public void deleteMediaFile(int mediaFileId) {
         try (Connection conn = getConnection()) {
-            String sql = "DELETE FROM media_files WHERE id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            // Delete file data first (foreign key constraint)
+            String deleteDataSql = "DELETE FROM file_data WHERE media_file_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(deleteDataSql)) {
+                stmt.setInt(1, mediaFileId);
+                stmt.executeUpdate();
+            }
+            
+            // Then delete the media file record
+            String deleteFileSql = "DELETE FROM media_files WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(deleteFileSql)) {
                 stmt.setInt(1, mediaFileId);
                 stmt.executeUpdate();
             }
