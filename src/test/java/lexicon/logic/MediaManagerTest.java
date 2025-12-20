@@ -4,6 +4,7 @@ import lexicon.data.ILexiconDatabase;
 import lexicon.data.IMediaDatabase;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
+import lexicon.service.OptimizedFileStorageService;
 import lexicon.service.YtDlpService;
 import lexicon.service.VideoTranscodingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,9 @@ class MediaManagerTest {
     private VideoTranscodingService videoTranscodingService;
     
     @Mock
+    private OptimizedFileStorageService fileStorageService;
+    
+    @Mock
     private MultipartFile mockFile;
     
     private MediaManager mediaManager;
@@ -47,7 +51,7 @@ class MediaManagerTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        mediaManager = new MediaManager(playerDatabase, mediaDatabase, ytDlpService, videoTranscodingService);
+        mediaManager = new MediaManager(playerDatabase, mediaDatabase, ytDlpService, videoTranscodingService, fileStorageService);
     }
     
     @Test
@@ -59,6 +63,8 @@ class MediaManagerTest {
         when(mockFile.getSize()).thenReturn(1024L);
         when(mockFile.getBytes()).thenReturn(new byte[]{1, 2, 3, 4});
         when(mediaDatabase.getNextMediaFileId()).thenReturn(1);
+        when(fileStorageService.storeFile(any(MultipartFile.class), any(MediaFile.class)))
+            .thenReturn("/storage/music/test.mp3");
         
         // Act
         MediaFile result = mediaManager.uploadMediaFile(mockFile, 16, "Test Song", "A test", true, "MUSIC");
@@ -68,8 +74,9 @@ class MediaManagerTest {
         assertEquals(1, result.getId());
         assertEquals("Test Song", result.getTitle());
         assertEquals(MediaType.MUSIC, result.getMediaType());
+        assertEquals("/storage/music/test.mp3", result.getFilePath());
         verify(mediaDatabase).addMediaFile(any(MediaFile.class));
-        verify(mediaDatabase).storeFileData(eq(1), any(byte[].class));
+        verify(fileStorageService).storeFile(eq(mockFile), any(MediaFile.class));
     }
     
     @Test

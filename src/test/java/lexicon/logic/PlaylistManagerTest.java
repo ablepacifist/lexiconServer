@@ -351,7 +351,7 @@ class PlaylistManagerTest {
                 assertEquals(customName, importedPlaylist.getName(), "Should use custom name");
                 assertEquals("MUSIC", importedPlaylist.getMediaType(), "Should be MUSIC type");
                 assertEquals(TEST_USER_ID, importedPlaylist.getCreatedBy(), "Should be created by test user");
-                assertTrue(importedPlaylist.getIsPublic(), "Should be public");
+                assertTrue(importedPlaylist.isPublic(), "Should be public");
                 
                 // Cleanup
                 playlistManager.deletePlaylist(result.playlistId, TEST_USER_ID);
@@ -386,7 +386,7 @@ class PlaylistManagerTest {
                 assertNotNull(importedPlaylist, "Playlist should exist");
                 assertNotNull(importedPlaylist.getName(), "Should have a name");
                 assertFalse(importedPlaylist.getName().isEmpty(), "Name should not be empty");
-                assertFalse(importedPlaylist.getIsPublic(), "Should be private (as specified)");
+                assertFalse(importedPlaylist.isPublic(), "Should be private (as specified)");
                 
                 // Cleanup
                 playlistManager.deletePlaylist(result.playlistId, TEST_USER_ID);

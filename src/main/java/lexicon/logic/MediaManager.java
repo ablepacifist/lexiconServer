@@ -5,6 +5,7 @@ import lexicon.data.IMediaDatabase;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.object.StreamResult;
+import lexicon.service.OptimizedFileStorageService;
 import lexicon.service.YtDlpService;
 import lexicon.service.VideoTranscodingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
  * Implementation of MediaManagerService
  * Handles all media file operations for the file sharing platform
  * Uses separate media database for media files
+ * Integrates with OptimizedFileStorageService for 500GB volume storage
  */
 @Service
 public class MediaManager implements MediaManagerService {
@@ -32,14 +35,17 @@ public class MediaManager implements MediaManagerService {
     private final IMediaDatabase mediaDatabase;
     private final YtDlpService ytDlpService;
     private final VideoTranscodingService transcodingService;
+    private final OptimizedFileStorageService fileStorageService;
     
     @Autowired
     public MediaManager(ILexiconDatabase playerDatabase, IMediaDatabase mediaDatabase, 
-                       YtDlpService ytDlpService, VideoTranscodingService transcodingService) {
+                       YtDlpService ytDlpService, VideoTranscodingService transcodingService,
+                       OptimizedFileStorageService fileStorageService) {
         this.playerDatabase = playerDatabase;
         this.mediaDatabase = mediaDatabase;
         this.ytDlpService = ytDlpService;
         this.transcodingService = transcodingService;
+        this.fileStorageService = fileStorageService;
     }
     
     @Override
@@ -55,15 +61,16 @@ public class MediaManager implements MediaManagerService {
         
         try {
             int id = mediaDatabase.getNextMediaFileId();
+            MediaType type = MediaType.fromString(mediaType);
             
-            // Create MediaFile object with correct constructor
+            // Create MediaFile object first (needed for storage service)
             MediaFile mediaFile = new MediaFile(
                 id,
                 file.getOriginalFilename(), // filename
                 file.getOriginalFilename(), // originalFilename
                 file.getContentType(),
                 file.getSize(),
-                "", // filePath - will be set by storage layer
+                "", // filePath - will be set after storage
                 userId, // uploadedBy
                 title.trim(),
                 description != null ? description.trim() : "",
@@ -71,18 +78,40 @@ public class MediaManager implements MediaManagerService {
             );
             
             mediaFile.setUploadDate(LocalDateTime.now());
-            mediaFile.setMediaType(MediaType.fromString(mediaType));
+            mediaFile.setMediaType(type);
+            
+            // Store file to 500GB volume using OptimizedFileStorageService
+            String storedFilePath = null;
+            if (fileStorageService != null) {
+                storedFilePath = fileStorageService.storeFile(file, mediaFile);
+                if (storedFilePath != null) {
+                    mediaFile.setFilePath(storedFilePath);
+                }
+            }
             
             // Save metadata to database
             mediaDatabase.addMediaFile(mediaFile);
             
-            // Store the actual file data
-            byte[] fileData = file.getBytes();
-            mediaDatabase.storeFileData(id, fileData);
+            // If file storage wasn't available, fall back to database storage
+            if (storedFilePath == null) {
+                if (file.getSize() > 100 * 1024 * 1024) { // 100MB threshold - use streaming
+                    try (InputStream inputStream = file.getInputStream()) {
+                        mediaDatabase.storeFileDataStreaming(id, inputStream, file.getSize());
+                    }
+                } else {
+                    byte[] fileData = file.getBytes();
+                    mediaDatabase.storeFileData(id, fileData);
+                }
+            }
             
             // Transcode video if needed (async in production, sync for now)
-            if (MediaType.fromString(mediaType) == MediaType.VIDEO) {
-                transcodeVideoIfNeeded(id, file.getOriginalFilename(), fileData);
+            if (type == MediaType.VIDEO) {
+                // For large files, we need to handle transcoding differently
+                // For now, skip transcoding for very large files
+                if (file.getSize() <= 100 * 1024 * 1024) {
+                    byte[] fileData = file.getBytes();
+                    transcodeVideoIfNeeded(id, file.getOriginalFilename(), fileData);
+                }
             }
             
             return mediaFile;
@@ -420,6 +449,101 @@ public class MediaManager implements MediaManagerService {
         System.arraycopy(fileData, (int) start, rangeData, 0, (int) contentLength);
         
         return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());
+    }
+    
+    @Override
+    public MediaFile uploadMediaFromFile(File file, int userId, String title, String description,
+                                         boolean isPublic, String mediaType, String sourceUrl) {
+        if (file == null || !file.exists()) {
+            throw new IllegalArgumentException("File cannot be null or must exist");
+        }
+        
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("Title cannot be empty");
+        }
+        
+        try {
+            int id = mediaDatabase.getNextMediaFileId();
+            MediaType type = MediaType.fromString(mediaType);
+            
+            // Determine content type from file extension
+            String contentType = determineContentType(file.getName(), type);
+            
+            // Create MediaFile object
+            MediaFile mediaFile = new MediaFile(
+                id,
+                file.getName(),
+                file.getName(),
+                contentType,
+                file.length(),
+                "", // Will be set by storage service
+                userId,
+                title.trim(),
+                description != null ? description.trim() : "",
+                isPublic
+            );
+            
+            mediaFile.setUploadDate(LocalDateTime.now());
+            mediaFile.setMediaType(type);
+            mediaFile.setSourceUrl(sourceUrl);
+            
+            // Store file on 500GB volume using OptimizedFileStorageService
+            String storedFilePath = null;
+            if (fileStorageService != null) {
+                // Create a wrapper to work with the storage service
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+                    storedFilePath = fileStorageService.storeFileFromStream(
+                        fis, file.getName(), file.length(), type);
+                    if (storedFilePath != null) {
+                        mediaFile.setFilePath(storedFilePath);
+                    }
+                }
+            }
+            
+            // Save metadata to database
+            mediaDatabase.addMediaFile(mediaFile);
+            
+            // Fallback to database storage if file storage failed
+            if (storedFilePath == null) {
+                byte[] fileData = Files.readAllBytes(file.toPath());
+                mediaDatabase.storeFileData(id, fileData);
+            }
+            
+            return mediaFile;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Determine content type based on filename and media type
+     */
+    private String determineContentType(String filename, MediaType mediaType) {
+        String lower = filename.toLowerCase();
+        
+        // Check by extension first
+        if (lower.endsWith(".mp3")) return "audio/mpeg";
+        if (lower.endsWith(".m4a")) return "audio/mp4";
+        if (lower.endsWith(".aac")) return "audio/aac";
+        if (lower.endsWith(".wav")) return "audio/wav";
+        if (lower.endsWith(".flac")) return "audio/flac";
+        if (lower.endsWith(".ogg")) return "audio/ogg";
+        if (lower.endsWith(".webm")) return mediaType == MediaType.VIDEO ? "video/webm" : "audio/webm";
+        if (lower.endsWith(".mp4")) return "video/mp4";
+        if (lower.endsWith(".mkv")) return "video/x-matroska";
+        if (lower.endsWith(".avi")) return "video/x-msvideo";
+        if (lower.endsWith(".mov")) return "video/quicktime";
+        
+        // Fallback by media type
+        switch (mediaType) {
+            case MUSIC:
+            case AUDIOBOOK:
+                return "audio/mpeg";
+            case VIDEO:
+                return "video/mp4";
+            default:
+                return "application/octet-stream";
+        }
     }
 }
 

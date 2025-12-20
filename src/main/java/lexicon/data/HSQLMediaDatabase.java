@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.*;
 import java.util.*;
+import java.io.InputStream;
 
 /**
  * HSQLDB implementation for media file storage
@@ -214,6 +215,21 @@ public class HSQLMediaDatabase implements IMediaDatabase {
         } catch (SQLException e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to store file data: " + e.getMessage(), e);
+        }
+    }
+    
+    @Override
+    public void storeFileDataStreaming(int mediaFileId, InputStream inputStream, long fileSize) {
+        try (Connection conn = getConnection()) {
+            String sql = "INSERT INTO file_data (media_file_id, data) VALUES (?, ?)";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, mediaFileId);
+                stmt.setBinaryStream(2, inputStream, fileSize);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw new RuntimeException("Failed to store file data (streaming): " + e.getMessage(), e);
         }
     }
     

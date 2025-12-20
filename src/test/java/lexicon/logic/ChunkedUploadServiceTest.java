@@ -1,10 +1,14 @@
 package lexicon.logic;
 
+import lexicon.config.StorageProperties;
 import lexicon.object.ChunkedUpload;
 import lexicon.object.ChunkedUploadStatus;
 import lexicon.object.MediaFile;
+import lexicon.service.OptimizedFileStorageService;
+import lexicon.service.UploadProgressService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -13,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 
@@ -31,17 +36,32 @@ import static org.mockito.Mockito.lenient;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ChunkedUploadServiceTest {
     
+    @TempDir
+    Path tempDir;
+    
     @Mock
     private MediaManagerService mockMediaManager;
     
     @Mock
     private ChunkedUploadProgressTracker mockProgressTracker;
     
+    @Mock
+    private StorageProperties storageProperties;
+    
+    @Mock
+    private OptimizedFileStorageService optimizedFileStorageService;
+    
+    @Mock 
+    private UploadProgressService uploadProgressService;
+    
     @InjectMocks
     private ChunkedUploadService service;
     
     @BeforeEach
     void setUp() {
+        // Setup storage properties mock
+        when(storageProperties.getTempChunksPath()).thenReturn(tempDir.toString());
+        
         // Setup mock responses
         MediaFile mockMediaFile = new MediaFile();
         mockMediaFile.setId(123);
@@ -59,6 +79,28 @@ public class ChunkedUploadServiceTest {
             )).thenReturn(mockMediaFile);
         } catch (Exception e) {
             fail("Failed to setup mock: " + e.getMessage());
+        }
+    }
+    
+    @AfterEach
+    void tearDown() {
+        // Clean up all files in temp directory to prevent TempDirectory cleanup failures
+        try {
+            if (tempDir != null && Files.exists(tempDir)) {
+                Files.walk(tempDir)
+                    .sorted((a, b) -> -a.compareTo(b)) // Reverse order to delete files before directories
+                    .forEach(path -> {
+                        try {
+                            if (!path.equals(tempDir)) {
+                                Files.deleteIfExists(path);
+                            }
+                        } catch (IOException ignored) {
+                            // Ignore cleanup errors
+                        }
+                    });
+            }
+        } catch (IOException ignored) {
+            // Ignore cleanup errors
         }
     }
     

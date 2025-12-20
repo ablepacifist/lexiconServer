@@ -3,6 +3,7 @@ package lexicon.data;
 import lexicon.object.MediaFile;
 import lexicon.object.PlaybackPosition;
 import java.util.List;
+import java.io.InputStream;
 
 /**
  * Interface for media file database operations
@@ -23,6 +24,7 @@ public interface IMediaDatabase {
     
     // File data storage (for actual file bytes)
     void storeFileData(int mediaFileId, byte[] fileData);
+    void storeFileDataStreaming(int mediaFileId, InputStream inputStream, long fileSize);
     byte[] getFileData(int mediaFileId);
     void deleteFileData(int mediaFileId);
     

@@ -45,7 +45,7 @@ public class ChunkedUploadProgressTracker {
      * Register an SSE emitter for chunked upload progress
      */
     public SseEmitter registerEmitter(String uploadId) {
-        SseEmitter emitter = new SseEmitter(60 * 60 * 1000L); // 60 minute timeout for large files
+        SseEmitter emitter = new SseEmitter(24 * 60 * 60 * 1000L); // 24 hour timeout - effectively no timeout
         emitters.put(uploadId, emitter);
         
         emitter.onCompletion(() -> emitters.remove(uploadId));

@@ -44,6 +44,8 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/media/**").permitAll()  // Allow access to media endpoints for testing
                 .requestMatchers("/api/playlists/**").permitAll()  // Allow access to playlist endpoints
                 .requestMatchers("/api/playback/**").permitAll()  // Allow access to playback position endpoints
+                .requestMatchers("/api/stream/**").permitAll()  // Allow access to streaming endpoints
+                .requestMatchers("/api/download-queue/**").permitAll()  // Allow async download queue
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -72,13 +74,40 @@ public class LexiconSecurityConfig {
             origins.add("http://localhost:3001");
         }
         
+        // Use origin patterns for wildcards support
+        List<String> originPatterns = new ArrayList<>();
+        List<String> exactOrigins = new ArrayList<>();
+        
+        for (String origin : origins) {
+            if (origin.contains("*")) {
+                // Convert wildcard to regex pattern for setAllowedOriginPatterns
+                originPatterns.add(origin.replace("*", ".*"));
+            } else {
+                exactOrigins.add(origin);
+            }
+        }
+        
+        // Add common playit patterns
+        originPatterns.add("http://147\\.185\\.221\\.24:.*");
+        originPatterns.add("https://147\\.185\\.221\\.24:.*");
+        originPatterns.add("http://.*\\.playit\\.pub:.*");
+        originPatterns.add("https://.*\\.playit\\.pub:.*");
+        
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");
-        System.out.println("Configured origins: " + origins);
+        System.out.println("Exact origins: " + exactOrigins);
+        System.out.println("Origin patterns: " + originPatterns);
         System.out.println("========================");
         
-        config.setAllowedOrigins(origins);
-        config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS"));
+        // Set both exact origins and patterns
+        if (!exactOrigins.isEmpty()) {
+            config.setAllowedOrigins(exactOrigins);
+        }
+        if (!originPatterns.isEmpty()) {
+            config.setAllowedOriginPatterns(originPatterns);
+        }
+        
+        config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS","HEAD"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Content-Range", "Accept-Ranges", "Content-Length", "Content-Type"));
         

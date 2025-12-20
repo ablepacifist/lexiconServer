@@ -34,13 +34,29 @@ public class YoutubeImportService {
         BufferedReader reader = new BufferedReader(
             new InputStreamReader(process.getInputStream()));
         
-        String firstLine = reader.readLine();
-        if (firstLine == null) {
-            throw new Exception("Failed to fetch playlist information");
+        String firstJsonLine = null;
+        String line;
+        
+        // Read lines until we find the first JSON line (skip WARNING messages)
+        while ((line = reader.readLine()) != null) {
+            // Skip lines that start with WARNING or other non-JSON content
+            if (line.startsWith("{") && line.contains("\"")) {
+                firstJsonLine = line;
+                break;
+            }
+            // Also skip lines that are clearly warnings or status messages
+            if (line.startsWith("WARNING:") || line.startsWith("ERROR:") || 
+                line.startsWith("[") || line.isEmpty()) {
+                continue;
+            }
+        }
+        
+        if (firstJsonLine == null) {
+            throw new Exception("Failed to fetch playlist information - no JSON data found");
         }
         
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode firstEntry = mapper.readTree(firstLine);
+        JsonNode firstEntry = mapper.readTree(firstJsonLine);
         
         String playlistName = firstEntry.has("playlist_title") 
             ? firstEntry.get("playlist_title").asText() 
@@ -93,10 +109,15 @@ public class YoutubeImportService {
         
         // Parse response to get media ID
         String responseStr = response.toString();
-        if (responseStr.contains("\"id\"")) {
+        System.out.println("Media upload response: " + responseStr);
+        
+        if (responseStr.contains("\"success\":true") && responseStr.contains("\"mediaFile\"")) {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode mediaResponse = mapper.readTree(responseStr);
-            return mediaResponse.get("id").asInt();
+            JsonNode mediaFile = mediaResponse.get("mediaFile");
+            if (mediaFile != null && mediaFile.has("id")) {
+                return mediaFile.get("id").asInt();
+            }
         }
         
         return -1;

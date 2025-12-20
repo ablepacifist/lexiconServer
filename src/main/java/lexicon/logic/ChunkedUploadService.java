@@ -4,10 +4,16 @@ import lexicon.logic.MediaManagerService;
 import lexicon.object.ChunkedUpload;
 import lexicon.object.ChunkedUploadStatus;
 import lexicon.object.MediaFile;
+import lexicon.object.StreamingMultipartFile;
 import lexicon.object.UploadChunk;
+import lexicon.config.StorageProperties;
+import lexicon.service.OptimizedFileStorageService;
+import lexicon.service.UploadProgressService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import jakarta.annotation.PostConstruct;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -32,20 +38,31 @@ public class ChunkedUploadService {
     private MediaManagerService mediaManager;
     
     @Autowired
-    private ChunkedUploadProgressTracker progressTracker;
+    private StorageProperties storageProperties;
+    
+    @Autowired
+    private OptimizedFileStorageService fileStorageService;
+    
+    @Autowired
+    private UploadProgressService uploadProgressService;
     
     // In-memory storage for upload sessions (could be moved to database for persistence)
     private final Map<String, ChunkedUpload> activeUploads = new ConcurrentHashMap<>();
     
-    // Directory for temporary chunk storage
-    private final String tempChunkDir = System.getProperty("java.io.tmpdir") + "/lexicon-chunks/";
-    
     public ChunkedUploadService() {
         // Create temp directory if it doesn't exist
+        // Note: Initialization will be done in @PostConstruct method
+    }
+    
+    @PostConstruct
+    public void init() {
         try {
-            Files.createDirectories(Paths.get(tempChunkDir));
+            // Use StorageProperties for temp directory paths
+            Files.createDirectories(Paths.get(storageProperties.getTempChunksPath()));
+            Files.createDirectories(Paths.get(storageProperties.getTempProcessingPath()));
+            Files.createDirectories(Paths.get(storageProperties.getCachePath()));
         } catch (IOException e) {
-            throw new RuntimeException("Failed to create temporary chunk directory: " + e.getMessage());
+            throw new RuntimeException("Failed to create temporary directories: " + e.getMessage());
         }
     }
     
@@ -74,7 +91,7 @@ public class ChunkedUploadService {
         
         // Create directory for this upload's chunks
         try {
-            Files.createDirectories(Paths.get(tempChunkDir, uploadId));
+            Files.createDirectories(Paths.get(storageProperties.getTempChunksPath(), uploadId));
         } catch (IOException e) {
             throw new RuntimeException("Failed to create chunk directory for upload: " + e.getMessage());
         }
@@ -123,15 +140,19 @@ public class ChunkedUploadService {
             }
             
             // Save chunk to temporary file
-            Path chunkPath = Paths.get(tempChunkDir, uploadId, "chunk_" + chunkNumber);
+            Path chunkPath = Paths.get(storageProperties.getTempChunksPath(), uploadId, "chunk_" + chunkNumber);
             Files.write(chunkPath, chunkData);
             
             // Update upload progress
             upload.addUploadedChunk(chunkNumber);
             upload.setLastActivity(LocalDateTime.now());
             
-            // Update progress tracker
-            progressTracker.updateProgress(upload, "Uploaded chunk " + (chunkNumber + 1) + "/" + upload.getTotalChunks());
+            // Update progress tracking
+            System.out.println("📤 Uploaded chunk " + (chunkNumber + 1) + "/" + upload.getTotalChunks() + " for " + upload.getOriginalFilename());
+            
+            // Update enhanced progress tracking with WebSocket
+            long bytesUploaded = (long) upload.getUploadedChunks().size() * upload.getChunkSize();
+            uploadProgressService.updateProgress(uploadId, bytesUploaded, upload.getTotalSize(), "uploading");
             
             System.out.println("📦 Uploaded chunk " + chunkNumber + "/" + (upload.getTotalChunks() - 1) + 
                              " for " + upload.getOriginalFilename() + " (" + upload.getProgress() + "%)");
@@ -139,7 +160,7 @@ public class ChunkedUploadService {
             // Check if upload is complete
             if (upload.isComplete()) {
                 upload.setStatus(ChunkedUploadStatus.ASSEMBLING);
-                progressTracker.updateProgress(upload, "All chunks uploaded, assembling file...");
+                System.out.println("🔄 All chunks uploaded for " + upload.getOriginalFilename() + ", assembling file...");
                 System.out.println("✅ All chunks uploaded for " + upload.getOriginalFilename() + ", ready for assembly");
                 
                 // Start assembly in background
@@ -149,7 +170,7 @@ public class ChunkedUploadService {
                     } catch (Exception e) {
                         System.err.println("❌ Failed to assemble chunks for " + uploadId + ": " + e.getMessage());
                         upload.setStatus(ChunkedUploadStatus.FAILED);
-                        progressTracker.markFailed(uploadId, e.getMessage());
+                        System.err.println("❌ Upload failed for " + uploadId + ": " + e.getMessage());
                     }
                 }).start();
             }
@@ -177,24 +198,30 @@ public class ChunkedUploadService {
         }
         
         upload.setStatus(ChunkedUploadStatus.ASSEMBLING);
-        progressTracker.updateProgress(upload, "Assembling file from " + upload.getTotalChunks() + " chunks...");
+        System.out.println("🔧 Assembling " + upload.getTotalChunks() + " chunks for " + upload.getOriginalFilename() + "...");
         
         System.out.println("🔧 Assembling " + upload.getTotalChunks() + " chunks for " + upload.getOriginalFilename());
         
         // Create temporary file for assembly
-        Path tempFile = Paths.get(tempChunkDir, uploadId + "_assembled");
+        Path tempFile = Paths.get(storageProperties.getTempChunksPath(), uploadId + "_assembled");
         
         try (FileOutputStream fos = new FileOutputStream(tempFile.toFile())) {
-            // Write chunks in order
+            // Write chunks in order using streaming to avoid memory issues
             for (int i = 0; i < upload.getTotalChunks(); i++) {
-                Path chunkPath = Paths.get(tempChunkDir, uploadId, "chunk_" + i);
+                Path chunkPath = Paths.get(storageProperties.getTempChunksPath(), uploadId, "chunk_" + i);
                 
                 if (!Files.exists(chunkPath)) {
                     throw new IllegalStateException("Missing chunk " + i + " during assembly");
                 }
                 
-                byte[] chunkData = Files.readAllBytes(chunkPath);
-                fos.write(chunkData);
+                // Stream chunk data directly to avoid loading entire chunk into memory
+                try (FileInputStream fis = new FileInputStream(chunkPath.toFile())) {
+                    byte[] buffer = new byte[8192]; // 8KB buffer
+                    int bytesRead;
+                    while ((bytesRead = fis.read(buffer)) != -1) {
+                        fos.write(buffer, 0, bytesRead);
+                    }
+                }
             }
         }
         
@@ -216,7 +243,7 @@ public class ChunkedUploadService {
         System.out.println("✅ Successfully assembled " + upload.getOriginalFilename() + " (" + assembledSize + " bytes)");
         
         upload.setStatus(ChunkedUploadStatus.COMPLETED);
-        progressTracker.updateProgress(upload, "File assembled successfully, ready for finalization");
+        System.out.println("✅ File assembled successfully for " + upload.getOriginalFilename() + ", ready for finalization");
     }
     
     /**
@@ -233,25 +260,24 @@ public class ChunkedUploadService {
         }
         
         // Path to assembled file
-        Path assembledFile = Paths.get(tempChunkDir, uploadId + "_assembled");
+        Path assembledFile = Paths.get(storageProperties.getTempChunksPath(), uploadId + "_assembled");
         
         if (!Files.exists(assembledFile)) {
             throw new IllegalStateException("Assembled file not found");
         }
         
         try {
-            // Create a temporary MultipartFile-like object for the media manager
-            byte[] fileData = Files.readAllBytes(assembledFile);
-            TempMultipartFile tempMultipartFile = new TempMultipartFile(
+            // Create a streaming MultipartFile-like object for the media manager
+            StreamingMultipartFile streamingMultipartFile = new StreamingMultipartFile(
                 upload.getOriginalFilename(),
                 upload.getOriginalFilename(), 
                 upload.getContentType(),
-                fileData
+                assembledFile
             );
             
             // Use existing media manager to store in database
             MediaFile mediaFile = mediaManager.uploadMediaFile(
-                tempMultipartFile,
+                streamingMultipartFile,
                 upload.getUploadedBy(),
                 upload.getTitle(),
                 upload.getDescription(),
@@ -262,7 +288,7 @@ public class ChunkedUploadService {
             System.out.println("🎉 Finalized chunked upload: " + mediaFile.getFilename() + " (ID: " + mediaFile.getId() + ")");
             
             // Mark as completed in progress tracker
-            progressTracker.markCompleted(uploadId);
+            System.out.println("🎉 Upload completed successfully: " + uploadId);
             
             // Cleanup temporary files
             cleanupUpload(uploadId);
@@ -299,7 +325,7 @@ public class ChunkedUploadService {
     private void cleanupUpload(String uploadId) {
         try {
             // Remove chunk directory
-            Path chunkDir = Paths.get(tempChunkDir, uploadId);
+            Path chunkDir = Paths.get(storageProperties.getTempChunksPath(), uploadId);
             if (Files.exists(chunkDir)) {
                 Files.walk(chunkDir)
                      .map(Path::toFile)
@@ -308,7 +334,7 @@ public class ChunkedUploadService {
             }
             
             // Remove assembled file
-            Path assembledFile = Paths.get(tempChunkDir, uploadId + "_assembled");
+            Path assembledFile = Paths.get(storageProperties.getTempChunksPath(), uploadId + "_assembled");
             Files.deleteIfExists(assembledFile);
             
             // Remove from active uploads
