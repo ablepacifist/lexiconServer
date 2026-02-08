@@ -345,34 +345,7 @@ class HSQLPlaylistDatabaseTest {
     @AfterAll
     static void cleanup(@Autowired IPlaylistDatabase playlistDatabase, 
                         @Autowired IMediaDatabase mediaDatabase) {
-        System.out.println("Starting HSQLPlaylistDatabaseTest cleanup...");
-        
-        // Clean up all playlists created by TEST_USER_ID
-        List<Playlist> userPlaylists = playlistDatabase.getPlaylistsByUser(TEST_USER_ID);
-        System.out.println("Found " + userPlaylists.size() + " playlists to delete for user " + TEST_USER_ID);
-        for (Playlist playlist : userPlaylists) {
-            playlistDatabase.deletePlaylist(playlist.getId());
-        }
-        
-        // Clean up ALL media files uploaded by TEST_USER_ID
-        try {
-            List<MediaFile> userMedia = mediaDatabase.getMediaFilesByPlayer(TEST_USER_ID);
-            int deletedCount = 0;
-            for (MediaFile media : userMedia) {
-                try {
-                    mediaDatabase.deleteMediaFile(media.getId());
-                    deletedCount++;
-                    System.out.println("Deleted test media: " + media.getOriginalFilename());
-                } catch (Exception e) {
-                    System.err.println("Could not delete media " + media.getId() + ": " + e.getMessage());
-                }
-            }
-            System.out.println("Deleted " + deletedCount + " test media files for user " + TEST_USER_ID);
-        } catch (Exception e) {
-            System.err.println("Error during media cleanup: " + e.getMessage());
-        }
-        
-        System.out.println("HSQLPlaylistDatabaseTest cleanup completed");
+        lexicon.utils.TestCleanupUtil.cleanupUserData(mediaDatabase, playlistDatabase, TEST_USER_ID);
     }
 }
 

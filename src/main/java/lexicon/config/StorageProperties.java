@@ -11,11 +11,11 @@ import org.springframework.stereotype.Component;
 public class StorageProperties {
     
     private String basePath = "/media/alexpdyak32/7db05fe3-9f6a-46cb-82dd-8ff00d8488a0/lexicon-storage";
-    private String tempPath = basePath + "/temp";
-    private String audiobooksPath = basePath + "/audiobooks";
-    private String musicPath = basePath + "/music";
-    private String videosPath = basePath + "/videos";
-    private String backupsPath = basePath + "/backups";
+    private String tempPath;
+    private String audiobooksPath;
+    private String musicPath;
+    private String videosPath;
+    private String backupsPath;
     
     // File size thresholds
     private long smallFileThreshold = 10 * 1024 * 1024;  // 10MB
@@ -31,19 +31,29 @@ public class StorageProperties {
     public String getBasePath() { return basePath; }
     public void setBasePath(String basePath) { this.basePath = basePath; }
     
-    public String getTempPath() { return tempPath; }
+    public String getTempPath() { 
+        return tempPath != null ? tempPath : basePath + "/temp"; 
+    }
     public void setTempPath(String tempPath) { this.tempPath = tempPath; }
     
-    public String getAudiobooksPath() { return audiobooksPath; }
+    public String getAudiobooksPath() { 
+        return audiobooksPath != null ? audiobooksPath : basePath + "/audiobooks"; 
+    }
     public void setAudiobooksPath(String audiobooksPath) { this.audiobooksPath = audiobooksPath; }
     
-    public String getMusicPath() { return musicPath; }
+    public String getMusicPath() { 
+        return musicPath != null ? musicPath : basePath + "/music"; 
+    }
     public void setMusicPath(String musicPath) { this.musicPath = musicPath; }
     
-    public String getVideosPath() { return videosPath; }
+    public String getVideosPath() { 
+        return videosPath != null ? videosPath : basePath + "/videos"; 
+    }
     public void setVideosPath(String videosPath) { this.videosPath = videosPath; }
     
-    public String getBackupsPath() { return backupsPath; }
+    public String getBackupsPath() { 
+        return backupsPath != null ? backupsPath : basePath + "/backups"; 
+    }
     public void setBackupsPath(String backupsPath) { this.backupsPath = backupsPath; }
     
     public long getSmallFileThreshold() { return smallFileThreshold; }

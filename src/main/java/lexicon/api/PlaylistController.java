@@ -323,7 +323,9 @@ public class PlaylistController {
             @RequestParam("userId") Integer userId,
             @RequestParam(value = "playlistName", required = false) String playlistName,
             @RequestParam(value = "isPublic", defaultValue = "true") Boolean isPublic,
-            @RequestParam(value = "mediaIsPublic", defaultValue = "false") Boolean mediaIsPublic) {
+            @RequestParam(value = "mediaIsPublic", defaultValue = "false") Boolean mediaIsPublic,
+            @RequestParam(value = "mediaType", defaultValue = "MUSIC") String mediaType,
+            @RequestParam(value = "downloadType", defaultValue = "AUDIO_ONLY") String downloadType) {
         
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User ID required");
@@ -350,7 +352,7 @@ public class PlaylistController {
                     }
                     
                     PlaylistManager.ImportResult result = playlistManager.importYoutubePlaylist(
-                        playlistUrl, userId, playlistName, isPublic, mediaIsPublic, 
+                        playlistUrl, userId, playlistName, isPublic, mediaIsPublic, mediaType, downloadType,
                         (message, total, successful, failed) -> {
                             SseEmitter progressEmitter = playlistImportEmitters.get(importId);
                             if (progressEmitter != null) {

@@ -194,15 +194,26 @@ public class ChunkedUploadController {
      */
     @PostMapping("/finalize/{uploadId}")
     public ResponseEntity<Map<String, Object>> finalizeUpload(@PathVariable String uploadId) {
+        System.out.println("🔒 Finalize request received for uploadId: " + uploadId);
         try {
             Map<String, Object> result = chunkedUploadService.finalizeUpload(uploadId);
+            System.out.println("✅ Finalize successful for uploadId: " + uploadId);
             return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            System.out.println("❌ Finalize failed (not found): " + e.getMessage());
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         } catch (IllegalStateException e) {
+            System.out.println("❌ Finalize failed (bad state): " + e.getMessage());
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
+            System.out.println("❌ Finalize failed (exception): " + e.getMessage());
+            e.printStackTrace();
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
             error.put("message", "Failed to finalize upload: " + e.getMessage());

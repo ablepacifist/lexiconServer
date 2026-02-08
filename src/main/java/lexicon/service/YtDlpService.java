@@ -187,11 +187,19 @@ public class YtDlpService {
      */
     private boolean isYtDlpInstalled() {
         try {
-            Process process = new ProcessBuilder("yt-dlp", "--version").start();
+            // Use full path since Java process PATH may not include /usr/local/bin
+            Process process = new ProcessBuilder("/usr/local/bin/yt-dlp", "--version").start();
             process.waitFor(5, TimeUnit.SECONDS);
             return process.exitValue() == 0;
         } catch (Exception e) {
-            return false;
+            // Fall back to PATH lookup
+            try {
+                Process process = new ProcessBuilder("yt-dlp", "--version").start();
+                process.waitFor(5, TimeUnit.SECONDS);
+                return process.exitValue() == 0;
+            } catch (Exception e2) {
+                return false;
+            }
         }
     }
     

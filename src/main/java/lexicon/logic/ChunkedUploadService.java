@@ -250,9 +250,34 @@ public class ChunkedUploadService {
      * Finalize upload and create MediaFile in database
      */
     public Map<String, Object> finalizeUpload(String uploadId) throws Exception {
+        System.out.println("🔧 Finalizing upload: " + uploadId);
         ChunkedUpload upload = activeUploads.get(uploadId);
         if (upload == null) {
+            System.out.println("❌ Upload session not found in activeUploads: " + uploadId);
+            System.out.println("   Active uploads: " + activeUploads.keySet());
             throw new IllegalArgumentException("Upload session not found: " + uploadId);
+        }
+        
+        System.out.println("📊 Upload status: " + upload.getStatus());
+        
+        // If assembly is in progress, wait for it to complete (with timeout)
+        if (upload.getStatus() == ChunkedUploadStatus.ASSEMBLING) {
+            System.out.println("⏳ Assembly in progress, waiting for completion...");
+            int maxWaitSeconds = 300; // 5 minute timeout for large files
+            int waitedSeconds = 0;
+            while (upload.getStatus() == ChunkedUploadStatus.ASSEMBLING && waitedSeconds < maxWaitSeconds) {
+                try {
+                    Thread.sleep(1000); // Check every second
+                    waitedSeconds++;
+                    if (waitedSeconds % 10 == 0) {
+                        System.out.println("⏳ Still waiting for assembly... (" + waitedSeconds + "s)");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted while waiting for assembly");
+                }
+            }
+            System.out.println("✅ Done waiting. Final status: " + upload.getStatus());
         }
         
         if (upload.getStatus() != ChunkedUploadStatus.COMPLETED) {

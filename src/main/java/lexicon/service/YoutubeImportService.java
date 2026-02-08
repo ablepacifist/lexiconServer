@@ -77,8 +77,8 @@ public class YoutubeImportService {
      * @return media ID if successful, -1 if failed
      */
     public int downloadAndUploadMedia(String videoId, String title, String playlistName, 
-                                       int userId, boolean isPublic) throws Exception {
-        String videoUrl = "https://music.youtube.com/watch?v=" + videoId;
+                                       int userId, boolean isPublic, String mediaType, String downloadType) throws Exception {
+        String videoUrl = "https://www.youtube.com/watch?v=" + videoId;
         
         ProcessBuilder pb = new ProcessBuilder(
             "curl", "-s", "-X", "POST",
@@ -88,8 +88,8 @@ public class YoutubeImportService {
             "-F", "title=" + title,
             "-F", "description=From playlist: " + playlistName,
             "-F", "isPublic=" + isPublic,
-            "-F", "mediaType=MUSIC",
-            "-F", "downloadType=AUDIO_ONLY"
+            "-F", "mediaType=" + mediaType,
+            "-F", "downloadType=" + downloadType
         );
         
         pb.redirectErrorStream(true);

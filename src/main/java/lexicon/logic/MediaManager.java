@@ -409,6 +409,14 @@ public class MediaManager implements MediaManagerService {
             return null;
         }
         
+        // Check if file is stored on file system first
+        String filePath = mediaFile.getFilePath();
+        if (filePath != null && !filePath.isEmpty()) {
+            System.out.println("File stored on file system: " + filePath);
+            return getStreamDataFromFileSystem(mediaFile, filePath, rangeHeader);
+        }
+        
+        // Fall back to database storage
         byte[] fileData = mediaDatabase.getFileData(mediaFileId);
         System.out.println("File data from DB: " + (fileData != null ? fileData.length + " bytes" : "NULL"));
         
@@ -449,6 +457,62 @@ public class MediaManager implements MediaManagerService {
         System.arraycopy(fileData, (int) start, rangeData, 0, (int) contentLength);
         
         return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());
+    }
+    
+    /**
+     * Stream data from file system storage (for large files stored on disk)
+     */
+    private StreamResult getStreamDataFromFileSystem(MediaFile mediaFile, String filePath, String rangeHeader) {
+        try {
+            long fileSize = fileStorageService.getFileSize(filePath);
+            System.out.println("File size from filesystem: " + fileSize + " bytes");
+            
+            long start = 0;
+            long end = fileSize - 1;
+            boolean isPartialContent = false;
+            
+            // Parse Range header if present
+            if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+                isPartialContent = true;
+                String[] ranges = rangeHeader.substring(6).split("-");
+                try {
+                    start = Long.parseLong(ranges[0]);
+                    if (ranges.length > 1 && !ranges[1].isEmpty()) {
+                        end = Long.parseLong(ranges[1]);
+                    }
+                } catch (NumberFormatException e) {
+                    return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+                }
+            }
+            
+            // Validate range
+            if (start > end || start < 0 || end >= fileSize) {
+                return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+            }
+            
+            // For large files, limit chunk size to avoid memory issues (2MB chunks)
+            long maxChunkSize = 2 * 1024 * 1024;
+            if (end - start + 1 > maxChunkSize) {
+                end = start + maxChunkSize - 1;
+            }
+            
+            // Read the file chunk
+            long contentLength = end - start + 1;
+            byte[] rangeData = new byte[(int) contentLength];
+            
+            try (InputStream inputStream = fileStorageService.getFileInputStream(filePath)) {
+                inputStream.skip(start);
+                int bytesRead = inputStream.read(rangeData);
+                System.out.println("Read " + bytesRead + " bytes from filesystem");
+            }
+            
+            return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());
+            
+        } catch (Exception e) {
+            System.err.println("Error reading from file system: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
     
     @Override

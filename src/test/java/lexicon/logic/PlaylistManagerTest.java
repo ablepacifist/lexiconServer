@@ -256,53 +256,7 @@ class PlaylistManagerTest {
     @AfterAll
     static void cleanup(@Autowired IPlaylistDatabase playlistDatabase,
                         @Autowired IMediaDatabase mediaDatabase) {
-        System.out.println("Starting PlaylistManagerTest cleanup...");
-        
-        // Clean up all playlists created by TEST_USER_ID and OTHER_USER_ID
-        List<Playlist> testUserPlaylists = playlistDatabase.getPlaylistsByUser(TEST_USER_ID);
-        System.out.println("Found " + testUserPlaylists.size() + " playlists to delete for user " + TEST_USER_ID);
-        for (Playlist playlist : testUserPlaylists) {
-            playlistDatabase.deletePlaylist(playlist.getId());
-        }
-        
-        List<Playlist> otherUserPlaylists = playlistDatabase.getPlaylistsByUser(OTHER_USER_ID);
-        System.out.println("Found " + otherUserPlaylists.size() + " playlists to delete for user " + OTHER_USER_ID);
-        for (Playlist playlist : otherUserPlaylists) {
-            playlistDatabase.deletePlaylist(playlist.getId());
-        }
-        
-        // Clean up ALL media files uploaded by TEST_USER_ID and OTHER_USER_ID
-        try {
-            List<MediaFile> testUserMedia = mediaDatabase.getMediaFilesByPlayer(TEST_USER_ID);
-            List<MediaFile> otherUserMedia = mediaDatabase.getMediaFilesByPlayer(OTHER_USER_ID);
-            
-            int deletedCount = 0;
-            for (MediaFile media : testUserMedia) {
-                try {
-                    mediaDatabase.deleteMediaFile(media.getId());
-                    deletedCount++;
-                    System.out.println("Deleted test media: " + media.getOriginalFilename());
-                } catch (Exception e) {
-                    System.err.println("Could not delete media " + media.getId() + ": " + e.getMessage());
-                }
-            }
-            
-            for (MediaFile media : otherUserMedia) {
-                try {
-                    mediaDatabase.deleteMediaFile(media.getId());
-                    deletedCount++;
-                    System.out.println("Deleted test media: " + media.getOriginalFilename());
-                } catch (Exception e) {
-                    System.err.println("Could not delete media " + media.getId() + ": " + e.getMessage());
-                }
-            }
-            
-            System.out.println("Deleted " + deletedCount + " test media files");
-        } catch (Exception e) {
-            System.err.println("Error during media cleanup: " + e.getMessage());
-        }
-        
-        System.out.println("PlaylistManagerTest cleanup completed");
+        lexicon.utils.TestCleanupUtil.cleanupUserData(mediaDatabase, playlistDatabase, TEST_USER_ID, OTHER_USER_ID);
     }
     
     // ============ YouTube Import Tests ============

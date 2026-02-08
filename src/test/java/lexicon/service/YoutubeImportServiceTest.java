@@ -63,9 +63,11 @@ public class YoutubeImportServiceTest {
         String playlistName = "Test Playlist";
         int userId = 1;
         boolean isPublic = false;
+        String mediaType = "MUSIC";
+        String downloadType = "audio";
         
         try {
-            int mediaId = service.downloadAndUploadMedia(videoId, title, playlistName, userId, isPublic);
+            int mediaId = service.downloadAndUploadMedia(videoId, title, playlistName, userId, isPublic, mediaType, downloadType);
             
             // In a real test environment, this would succeed
             // In unit test, it might fail due to missing server
@@ -87,9 +89,11 @@ public class YoutubeImportServiceTest {
         String playlistName = "Test Playlist";
         int userId = 1;
         boolean isPublic = false;
+        String mediaType = "MUSIC";
+        String downloadType = "audio";
         
         try {
-            int mediaId = service.downloadAndUploadMedia(invalidVideoId, title, playlistName, userId, isPublic);
+            int mediaId = service.downloadAndUploadMedia(invalidVideoId, title, playlistName, userId, isPublic, mediaType, downloadType);
             assertEquals(-1, mediaId, "Should return -1 for invalid video");
         } catch (Exception e) {
             // Expected behavior - invalid video should fail

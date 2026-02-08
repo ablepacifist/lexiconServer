@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run the Alchemy server first to start the database
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class HSQLLexiconDatabaseTest {
 
     private HSQLLexiconDatabase database;
@@ -26,6 +27,19 @@ class HSQLLexiconDatabaseTest {
     @BeforeEach
     void setUp() {
         database = new HSQLLexiconDatabase();
+    }
+    
+    @AfterAll
+    void cleanup() {
+        // Clean up test player created during tests
+        if (testPlayerId > 0) {
+            try {
+                database.deletePlayer(testPlayerId);
+                System.out.println("Cleaned up test player: " + testPlayerId);
+            } catch (Exception e) {
+                System.err.println("Could not delete test player: " + e.getMessage());
+            }
+        }
     }
 
     @Test

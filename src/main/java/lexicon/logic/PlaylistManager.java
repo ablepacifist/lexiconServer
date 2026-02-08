@@ -151,7 +151,7 @@ public class PlaylistManager {
      */
     public ImportResult importYoutubePlaylist(String playlistUrl, int userId, String customPlaylistName,
                                                boolean isPublic, boolean mediaIsPublic) {
-        return importYoutubePlaylist(playlistUrl, userId, customPlaylistName, isPublic, mediaIsPublic, null);
+        return importYoutubePlaylist(playlistUrl, userId, customPlaylistName, isPublic, mediaIsPublic, "MUSIC", "AUDIO_ONLY", null);
     }
     
     /**
@@ -159,7 +159,8 @@ public class PlaylistManager {
      * This is a long-running operation that should be called in a background thread
      */
     public ImportResult importYoutubePlaylist(String playlistUrl, int userId, String customPlaylistName,
-                                               boolean isPublic, boolean mediaIsPublic, ImportProgressCallback callback) {
+                                               boolean isPublic, boolean mediaIsPublic, String mediaType, 
+                                               String downloadType, ImportProgressCallback callback) {
         ImportResult result = new ImportResult();
         
         try {
@@ -199,7 +200,7 @@ public class PlaylistManager {
             Playlist playlist = new Playlist();
             playlist.setName(playlistName);
             playlist.setDescription("Imported from YouTube");
-            playlist.setMediaType(MediaType.MUSIC);
+            playlist.setMediaType(MediaType.fromString(mediaType));
             playlist.setCreatedBy(userId);
             playlist.setPublic(isPublic);
             
@@ -217,7 +218,7 @@ public class PlaylistManager {
             for (JsonNode entry : allEntries) {
                 processed++;
                 try {
-                    if (processPlaylistEntry(entry, playlistId, userId, playlistName, mediaIsPublic)) {
+                    if (processPlaylistEntry(entry, playlistId, userId, playlistName, mediaIsPublic, mediaType, downloadType)) {
                         result.successfulTracks++;
                     } else {
                         result.failedTracks++;
@@ -272,7 +273,8 @@ public class PlaylistManager {
      * Process a single playlist entry
      */
     private boolean processPlaylistEntry(JsonNode entry, int playlistId, int userId, 
-                                          String playlistName, boolean mediaIsPublic) {
+                                          String playlistName, boolean mediaIsPublic, 
+                                          String mediaType, String downloadType) {
         try {
             String videoId = entry.get("id").asText();
             String title = entry.get("title").asText();
@@ -281,7 +283,7 @@ public class PlaylistManager {
             
             // Download and upload the media
             int mediaId = youtubeImportService.downloadAndUploadMedia(
-                videoId, title, playlistName, userId, mediaIsPublic);
+                videoId, title, playlistName, userId, mediaIsPublic, mediaType, downloadType);
             
             if (mediaId > 0) {
                 // Add to playlist - no authorization check needed since we're the creator
