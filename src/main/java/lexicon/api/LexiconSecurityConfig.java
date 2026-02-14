@@ -79,23 +79,29 @@ public class LexiconSecurityConfig {
         }
         
         // Use origin patterns for wildcards support
+        // Spring's setAllowedOriginPatterns uses * as wildcard (NOT regex)
+        // Spring internally wraps patterns in \Q...\E and only expands * to .*
         List<String> originPatterns = new ArrayList<>();
         List<String> exactOrigins = new ArrayList<>();
         
         for (String origin : origins) {
             if (origin.contains("*")) {
-                // Convert wildcard to regex pattern for setAllowedOriginPatterns
-                originPatterns.add(origin.replace("*", ".*"));
+                // Already has wildcard - use as pattern directly (don't convert to regex)
+                originPatterns.add(origin);
             } else {
                 exactOrigins.add(origin);
             }
         }
         
-        // Add common playit patterns
-        originPatterns.add("http://147\\.185\\.221\\.24:.*");
-        originPatterns.add("https://147\\.185\\.221\\.24:.*");
-        originPatterns.add("http://.*\\.playit\\.pub:.*");
-        originPatterns.add("https://.*\\.playit\\.pub:.*");
+        // Add common playit patterns (use * wildcard, NOT regex .*)
+        originPatterns.add("http://147.185.221.24:*");
+        originPatterns.add("https://147.185.221.24:*");
+        originPatterns.add("http://*.playit.pub:*");
+        originPatterns.add("https://*.playit.pub:*");
+        
+        // Add custom domain patterns (Cloudflare tunnel)
+        originPatterns.add("https://alex-dyakin.com");
+        originPatterns.add("https://*.alex-dyakin.com");
         
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");
