@@ -5,6 +5,7 @@ import lexicon.object.PlaybackPosition;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.io.InputStream;
 
 /**
  * Mock implementation of IMediaDatabase for testing
@@ -88,6 +89,16 @@ public class MockMediaDatabase implements IMediaDatabase {
             throw new IllegalArgumentException("File data cannot be null");
         }
         fileData.put(mediaFileId, data);
+    }
+    
+    @Override
+    public void storeFileDataStreaming(int mediaFileId, InputStream inputStream, long fileSize) {
+        try {
+            byte[] data = inputStream.readAllBytes();
+            storeFileData(mediaFileId, data);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to store file data (streaming): " + e.getMessage(), e);
+        }
     }
     
     @Override

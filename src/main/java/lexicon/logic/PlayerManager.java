@@ -82,8 +82,7 @@ public class PlayerManager implements PlayerManagerService {
         
         // Verify password
         if (passwordEncoder.matches(password, player.getPassword())) {
-            // Update last login
-            database.updatePlayerLastLogin(player.getId(), LocalDateTime.now());
+            // Note: not updating last_login_date since Alchemy schema doesn't have that column
             return player;
         }
         

@@ -76,4 +76,10 @@ public interface MediaManagerService {
      * Get file data for streaming with Range request support
      */
     StreamResult getStreamData(int mediaFileId, String rangeHeader);
+    
+    /**
+     * Upload media from a local file (used by async download queue)
+     */
+    MediaFile uploadMediaFromFile(java.io.File file, int userId, String title, String description, 
+                                  boolean isPublic, String mediaType, String sourceUrl);
 }

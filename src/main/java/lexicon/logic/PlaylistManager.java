@@ -18,7 +18,18 @@ public class PlaylistManager {
     private IPlaylistDatabase playlistDatabase;
     
     @Autowired
+    private MediaManagerService mediaManager;
+    
+    @Autowired
     private YoutubeImportService youtubeImportService;
+    
+    /**
+     * Callback interface for playlist import progress
+     */
+    @FunctionalInterface
+    public interface ImportProgressCallback {
+        void onProgress(String message, int total, int successful, int failed);
+    }
     
     public int createPlaylist(Playlist playlist) {
         if (playlist.getName() == null || playlist.getName().trim().isEmpty()) {
@@ -58,6 +69,10 @@ public class PlaylistManager {
     }
     
     public boolean deletePlaylist(int playlistId, int userId) {
+        return deletePlaylist(playlistId, userId, false);
+    }
+    
+    public boolean deletePlaylist(int playlistId, int userId, boolean deleteMediaFiles) {
         Playlist existing = playlistDatabase.getPlaylistById(playlistId);
         if (existing == null) {
             return false;
@@ -66,6 +81,20 @@ public class PlaylistManager {
         // Only allow owner to delete
         if (existing.getCreatedBy() != userId) {
             throw new SecurityException("Not authorized to delete this playlist");
+        }
+        
+        // If user wants to delete media files, get the playlist items first
+        if (deleteMediaFiles) {
+            List<PlaylistItem> items = playlistDatabase.getPlaylistItems(playlistId);
+            for (PlaylistItem item : items) {
+                try {
+                    // Delete each media file (this includes security checks)
+                    mediaManager.deleteMediaFile(item.getMediaFileId(), userId);
+                } catch (Exception e) {
+                    System.err.println("Warning: Failed to delete media file " + item.getMediaFileId() + ": " + e.getMessage());
+                    // Continue with other files even if one fails
+                }
+            }
         }
         
         return playlistDatabase.deletePlaylist(playlistId);
@@ -118,27 +147,60 @@ public class PlaylistManager {
     }
     
     /**
-     * Import a YouTube playlist
-     * This is a long-running operation that should be called in a background thread
+     * Import a YouTube playlist (without progress callback)
      */
     public ImportResult importYoutubePlaylist(String playlistUrl, int userId, String customPlaylistName,
                                                boolean isPublic, boolean mediaIsPublic) {
+        return importYoutubePlaylist(playlistUrl, userId, customPlaylistName, isPublic, mediaIsPublic, "MUSIC", "AUDIO_ONLY", null);
+    }
+    
+    /**
+     * Import a YouTube playlist with progress tracking
+     * This is a long-running operation that should be called in a background thread
+     */
+    public ImportResult importYoutubePlaylist(String playlistUrl, int userId, String customPlaylistName,
+                                               boolean isPublic, boolean mediaIsPublic, String mediaType, 
+                                               String downloadType, ImportProgressCallback callback) {
         ImportResult result = new ImportResult();
         
         try {
             System.out.println("Starting YouTube playlist import for URL: " + playlistUrl);
             
-            // Step 1: Fetch playlist metadata
+            // Step 1: Fetch playlist metadata and count total entries
             YoutubeImportService.PlaylistMetadata metadata = youtubeImportService.fetchPlaylistMetadata(playlistUrl);
             
             String playlistName = (customPlaylistName != null && !customPlaylistName.trim().isEmpty()) 
                 ? customPlaylistName : metadata.name;
             
+            if (callback != null) {
+                callback.onProgress("Counting playlist entries...", 0, 0, 0);
+            }
+            
+            // Count total entries first
+            java.util.List<JsonNode> allEntries = new java.util.ArrayList<>();
+            allEntries.add(metadata.firstEntry); // Add the first entry
+            
+            String line;
+            while ((line = metadata.reader.readLine()) != null) {
+                try {
+                    JsonNode entry = metadata.mapper.readTree(line);
+                    allEntries.add(entry);
+                } catch (Exception e) {
+                    System.err.println("Error parsing playlist entry: " + e.getMessage());
+                }
+            }
+            
+            metadata.process.waitFor();
+            metadata.reader.close();
+            
+            result.totalTracks = allEntries.size();
+            System.out.println("Found " + result.totalTracks + " tracks in playlist");
+            
             // Step 2: Create the playlist
             Playlist playlist = new Playlist();
             playlist.setName(playlistName);
             playlist.setDescription("Imported from YouTube");
-            playlist.setMediaType(MediaType.MUSIC);
+            playlist.setMediaType(MediaType.fromString(mediaType));
             playlist.setCreatedBy(userId);
             playlist.setPublic(isPublic);
             
@@ -146,45 +208,62 @@ public class PlaylistManager {
             result.playlistId = playlistId;
             System.out.println("Created playlist ID: " + playlistId);
             
-            // Step 3: Process first entry
-            result.totalTracks++;
-            if (processPlaylistEntry(metadata.firstEntry, playlistId, userId, playlistName, mediaIsPublic)) {
-                result.successfulTracks++;
-            } else {
-                result.failedTracks++;
+            if (callback != null) {
+                callback.onProgress("Created playlist: " + playlistName + ". Processing " + result.totalTracks + " tracks...", 
+                                  result.totalTracks, 0, 0);
             }
             
-            // Step 4: Process remaining entries
-            String line;
-            while ((line = metadata.reader.readLine()) != null) {
-                result.totalTracks++;
+            // Step 3: Process all entries with accurate progress
+            int processed = 0;
+            for (JsonNode entry : allEntries) {
+                processed++;
                 try {
-                    JsonNode entry = metadata.mapper.readTree(line);
-                    if (processPlaylistEntry(entry, playlistId, userId, playlistName, mediaIsPublic)) {
+                    if (processPlaylistEntry(entry, playlistId, userId, playlistName, mediaIsPublic, mediaType, downloadType)) {
                         result.successfulTracks++;
                     } else {
                         result.failedTracks++;
                     }
+                    
+                    // Progress callback every track
+                    if (callback != null) {
+                        callback.onProgress(
+                            String.format("Processing track %d/%d...", processed, result.totalTracks), 
+                            result.totalTracks, result.successfulTracks, result.failedTracks);
+                    }
                 } catch (Exception e) {
                     System.err.println("Error processing playlist entry: " + e.getMessage());
                     result.failedTracks++;
+                    
+                    if (callback != null) {
+                        callback.onProgress(
+                            String.format("Error on track %d/%d: %s", processed, result.totalTracks, e.getMessage()), 
+                            result.totalTracks, result.successfulTracks, result.failedTracks);
+                    }
                 }
                 
                 // Small delay to avoid overwhelming the server
                 Thread.sleep(2000);
             }
             
-            metadata.process.waitFor();
-            metadata.reader.close();
-            
             result.success = true;
             System.out.println("Playlist import complete: " + result.successfulTracks + "/" + result.totalTracks + " tracks successfully added");
+            
+            // Final progress update
+            if (callback != null) {
+                callback.onProgress(
+                    String.format("Import completed: %d successful, %d failed", result.successfulTracks, result.failedTracks),
+                    result.totalTracks, result.successfulTracks, result.failedTracks);
+            }
             
         } catch (Exception e) {
             result.success = false;
             result.errorMessage = e.getMessage();
             System.err.println("Error importing playlist: " + e.getMessage());
             e.printStackTrace();
+            
+            if (callback != null) {
+                callback.onProgress("Import failed: " + e.getMessage(), result.totalTracks, result.successfulTracks, result.failedTracks);
+            }
         }
         
         return result;
@@ -194,7 +273,8 @@ public class PlaylistManager {
      * Process a single playlist entry
      */
     private boolean processPlaylistEntry(JsonNode entry, int playlistId, int userId, 
-                                          String playlistName, boolean mediaIsPublic) {
+                                          String playlistName, boolean mediaIsPublic, 
+                                          String mediaType, String downloadType) {
         try {
             String videoId = entry.get("id").asText();
             String title = entry.get("title").asText();
@@ -203,7 +283,7 @@ public class PlaylistManager {
             
             // Download and upload the media
             int mediaId = youtubeImportService.downloadAndUploadMedia(
-                videoId, title, playlistName, userId, mediaIsPublic);
+                videoId, title, playlistName, userId, mediaIsPublic, mediaType, downloadType);
             
             if (mediaId > 0) {
                 // Add to playlist - no authorization check needed since we're the creator

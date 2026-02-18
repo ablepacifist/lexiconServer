@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.*;
 import java.util.*;
+import java.io.InputStream;
 
 /**
  * HSQLDB implementation for media file storage
@@ -165,8 +166,16 @@ public class HSQLMediaDatabase implements IMediaDatabase {
     @Override
     public void deleteMediaFile(int mediaFileId) {
         try (Connection conn = getConnection()) {
-            String sql = "DELETE FROM media_files WHERE id = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            // Delete file data first (foreign key constraint)
+            String deleteDataSql = "DELETE FROM file_data WHERE media_file_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(deleteDataSql)) {
+                stmt.setInt(1, mediaFileId);
+                stmt.executeUpdate();
+            }
+            
+            // Then delete the media file record
+            String deleteFileSql = "DELETE FROM media_files WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(deleteFileSql)) {
                 stmt.setInt(1, mediaFileId);
                 stmt.executeUpdate();
             }
@@ -206,6 +215,21 @@ public class HSQLMediaDatabase implements IMediaDatabase {
         } catch (SQLException e) {
             e.printStackTrace();
             throw new RuntimeException("Failed to store file data: " + e.getMessage(), e);
+        }
+    }
+    
+    @Override
+    public void storeFileDataStreaming(int mediaFileId, InputStream inputStream, long fileSize) {
+        try (Connection conn = getConnection()) {
+            String sql = "INSERT INTO file_data (media_file_id, data) VALUES (?, ?)";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, mediaFileId);
+                stmt.setBinaryStream(2, inputStream, fileSize);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw new RuntimeException("Failed to store file data (streaming): " + e.getMessage(), e);
         }
     }
     
