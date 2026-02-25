@@ -305,6 +305,22 @@ public class MediaManager implements MediaManagerService {
     
     @Override
     public byte[] getFileData(int mediaFileId) {
+        // Check if file is stored on the file system first
+        MediaFile mediaFile = mediaDatabase.getMediaFile(mediaFileId);
+        if (mediaFile != null) {
+            String filePath = mediaFile.getFilePath();
+            if (filePath != null && !filePath.isEmpty()) {
+                try {
+                    try (InputStream is = fileStorageService.getFileInputStream(filePath)) {
+                        return is.readAllBytes();
+                    }
+                } catch (IOException e) {
+                    System.err.println("Failed to read file from filesystem (" + filePath + "): " + e.getMessage());
+                    // Fall through to database lookup
+                }
+            }
+        }
+        // Fall back to database storage
         return mediaDatabase.getFileData(mediaFileId);
     }
     
