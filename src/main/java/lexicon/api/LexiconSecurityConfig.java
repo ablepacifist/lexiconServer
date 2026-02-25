@@ -50,6 +50,8 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/livestream/**").permitAll()  // Allow access to live stream endpoints
                 .requestMatchers("/api/stream/**").permitAll()  // Allow access to streaming endpoints
                 .requestMatchers("/api/download-queue/**").permitAll()  // Allow async download queue
+                .requestMatchers("/api/messages/**").permitAll()  // Allow message endpoints (Mumble bridge)
+                .requestMatchers("/api/avatar/**").permitAll()   // Allow avatar proxy endpoints (Mumble bridge)
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -102,6 +104,11 @@ public class LexiconSecurityConfig {
         // Add custom domain patterns (Cloudflare tunnel)
         originPatterns.add("https://alex-dyakin.com");
         originPatterns.add("https://*.alex-dyakin.com");
+        
+        // Mumble Bridge origins
+        originPatterns.add("http://localhost:3080");
+        originPatterns.add("https://voice.alex-dyakin.com");
+        originPatterns.add("https://mumble.alex-dyakin.com");
         
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");
