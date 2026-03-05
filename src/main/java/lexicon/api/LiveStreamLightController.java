@@ -14,17 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Lightweight Live Stream Controller - queue management only
- * 
- * This controller provides a minimal SSE stream for queue operations (add/skip)
- * without loading full media or queue data. Ideal for slow connections.
- * 
- * Endpoints:
- * - GET /api/livestream/light/state - Current media only (no queue)
- * - POST /api/livestream/light/queue - Add to queue
- * - DELETE /api/livestream/light/queue/{id} - Remove from queue
- * - POST /api/livestream/light/skip - Vote to skip
- * - GET /api/livestream/light/updates - SSE stream (state changes only)
+ * Lightweight Live Stream Controller with channel support.
  */
 @RestController
 @RequestMapping("/api/livestream/light")
@@ -34,19 +24,15 @@ public class LiveStreamLightController {
     @Autowired
     private LiveStreamService liveStreamService;
 
-    /**
-     * Get current playing media ONLY - no queue data
-     * Super lightweight for status checks
-     * GET /api/livestream/light/state
-     */
     @GetMapping("/state")
-    public ResponseEntity<Map<String, Object>> getLightState() {
+    public ResponseEntity<Map<String, Object>> getLightState(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            LiveStreamState state = liveStreamService.getStreamState();
+            LiveStreamState state = liveStreamService.getStreamState(channel);
             
-            // Strip down to bare minimum - just current media and playback state
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
+            response.put("channel", channel);
             response.put("currentMediaId", state.getCurrentMediaId());
             response.put("currentMedia", state.getCurrentMedia());
             response.put("currentStartTime", state.getCurrentStartTime());
@@ -64,13 +50,9 @@ public class LiveStreamLightController {
         }
     }
 
-    /**
-     * Add media to queue (same as full version)
-     * POST /api/livestream/light/queue
-     * Body: { "userId": 1, "mediaFileId": 123 }
-     */
     @PostMapping("/queue")
     public ResponseEntity<Map<String, Object>> addToQueue(
+            @RequestParam(defaultValue = "video") String channel,
             @RequestBody Map<String, Integer> request) {
         try {
             Integer userId = request.get("userId");
@@ -83,7 +65,7 @@ public class LiveStreamLightController {
                 return ResponseEntity.badRequest().body(error);
             }
             
-            LiveStreamQueue queueItem = liveStreamService.addToQueue(userId, mediaFileId);
+            LiveStreamQueue queueItem = liveStreamService.addToQueue(channel, userId, mediaFileId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -105,16 +87,13 @@ public class LiveStreamLightController {
         }
     }
 
-    /**
-     * Remove item from queue
-     * DELETE /api/livestream/light/queue/{queueId}?userId={userId}
-     */
     @DeleteMapping("/queue/{queueId}")
     public ResponseEntity<Map<String, Object>> removeFromQueue(
             @PathVariable int queueId,
-            @RequestParam int userId) {
+            @RequestParam int userId,
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            liveStreamService.removeFromQueue(queueId, userId);
+            liveStreamService.removeFromQueue(channel, queueId, userId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -129,13 +108,9 @@ public class LiveStreamLightController {
         }
     }
 
-    /**
-     * Vote to skip current media
-     * POST /api/livestream/light/skip
-     * Body: { "userId": 1 }
-     */
     @PostMapping("/skip")
     public ResponseEntity<Map<String, Object>> voteSkip(
+            @RequestParam(defaultValue = "video") String channel,
             @RequestBody Map<String, Integer> request) {
         try {
             Integer userId = request.get("userId");
@@ -147,7 +122,7 @@ public class LiveStreamLightController {
                 return ResponseEntity.badRequest().body(error);
             }
             
-            boolean skipped = liveStreamService.voteSkip(userId);
+            boolean skipped = liveStreamService.voteSkip(channel, userId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -163,35 +138,23 @@ public class LiveStreamLightController {
         }
     }
 
-    /**
-     * Lightweight SSE stream - only state updates (no queue data)
-     * GET /api/livestream/light/updates
-     * 
-     * Sends minimal events:
-     * - state-update: { currentMediaId, title, position, startTime }
-     * - skip-update: { totalSkipVotes }
-     * 
-     * No full queue serialization = much faster updates
-     */
     @GetMapping(value = "/updates", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @CrossOrigin(origins = "*", allowedHeaders = "*", allowCredentials = "false", maxAge = 3600)
-    public SseEmitter streamLightUpdates() {
-        // Set reasonable timeout - 30 minutes
+    public SseEmitter streamLightUpdates(
+            @RequestParam(defaultValue = "video") String channel) {
         SseEmitter emitter = new SseEmitter(1800000L);
         
         try {
-            // Register with service (will receive minimal updates)
-            liveStreamService.registerEmitter(emitter);
+            liveStreamService.registerEmitter(channel, emitter);
             
-            // Immediately send heartbeat
             emitter.send(SseEmitter.event()
                     .name("heartbeat")
                     .data("connected"));
             
-            // Send current state snapshot
-            LiveStreamState state = liveStreamService.getStreamState();
+            LiveStreamState state = liveStreamService.getStreamState(channel);
             
             Map<String, Object> stateData = new HashMap<>();
+            stateData.put("channel", channel);
             stateData.put("currentMediaId", state.getCurrentMediaId());
             stateData.put("currentMedia", state.getCurrentMedia());
             stateData.put("currentStartTime", state.getCurrentStartTime());
@@ -202,18 +165,15 @@ public class LiveStreamLightController {
                     .name("init")
                     .data(stateData));
             
-            // Handle cleanup
-            emitter.onCompletion(() -> liveStreamService.unregisterEmitter(emitter));
+            emitter.onCompletion(() -> liveStreamService.unregisterEmitter(channel, emitter));
             emitter.onTimeout(() -> {
-                liveStreamService.unregisterEmitter(emitter);
+                liveStreamService.unregisterEmitter(channel, emitter);
                 emitter.complete();
             });
-            emitter.onError((e) -> {
-                liveStreamService.unregisterEmitter(emitter);
-            });
+            emitter.onError((e) -> liveStreamService.unregisterEmitter(channel, emitter));
             
         } catch (Exception e) {
-            liveStreamService.unregisterEmitter(emitter);
+            liveStreamService.unregisterEmitter(channel, emitter);
             emitter.completeWithError(e);
         }
         

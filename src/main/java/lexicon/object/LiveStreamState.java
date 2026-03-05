@@ -9,7 +9,8 @@ import java.util.List;
  * Only one instance exists at a time (singleton in database)
  */
 public class LiveStreamState {
-    private int id; // Always 1 (singleton)
+    private int id;
+    private String channel; // "music" or "video"
     private int currentMediaId;
     private LocalDateTime currentStartTime;
     private long currentPositionMs; // Position in milliseconds when paused/stored
@@ -21,13 +22,12 @@ public class LiveStreamState {
     private List<LiveStreamQueue> queuedItems;
     
     public LiveStreamState() {
-        this.id = 1; // Singleton
         this.requiredSkipVotes = 1; // Default: 1 vote to skip
         this.queuedItems = new ArrayList<>();
     }
     
-    public LiveStreamState(int currentMediaId, LocalDateTime currentStartTime) {
-        this.id = 1;
+    public LiveStreamState(String channel, int currentMediaId, LocalDateTime currentStartTime) {
+        this.channel = channel;
         this.currentMediaId = currentMediaId;
         this.currentStartTime = currentStartTime;
         this.currentPositionMs = 0;
@@ -39,6 +39,9 @@ public class LiveStreamState {
     // Getters and Setters
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
+    
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
     
     public int getCurrentMediaId() { return currentMediaId; }
     public void setCurrentMediaId(int currentMediaId) { this.currentMediaId = currentMediaId; }
@@ -76,7 +79,8 @@ public class LiveStreamState {
     @Override
     public String toString() {
         return "LiveStreamState{" +
-                "currentMediaId=" + currentMediaId +
+                "channel=" + channel +
+                ", currentMediaId=" + currentMediaId +
                 ", currentStartTime=" + currentStartTime +
                 ", currentPositionMs=" + currentPositionMs +
                 ", totalSkipVotes=" + totalSkipVotes +

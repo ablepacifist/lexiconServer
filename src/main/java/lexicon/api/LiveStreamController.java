@@ -17,8 +17,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * REST Controller for Live Stream functionality
- * Manages the synchronized video/music stream for all users
+ * REST Controller for Live Stream functionality with channel support.
+ * All endpoints accept a ?channel=music or ?channel=video parameter.
  */
 @RestController
 @RequestMapping("/api/livestream")
@@ -28,14 +28,11 @@ public class LiveStreamController {
     @Autowired
     private LiveStreamService liveStreamService;
 
-    /**
-     * Get current live stream state
-     * GET /api/livestream/state
-     */
     @GetMapping("/state")
-    public ResponseEntity<Map<String, Object>> getState() {
+    public ResponseEntity<Map<String, Object>> getState(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            LiveStreamState state = liveStreamService.getStreamState();
+            LiveStreamState state = liveStreamService.getStreamState(channel);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -50,14 +47,11 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Get current queue
-     * GET /api/livestream/queue
-     */
     @GetMapping("/queue")
-    public ResponseEntity<Map<String, Object>> getQueue() {
+    public ResponseEntity<Map<String, Object>> getQueue(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            List<LiveStreamQueue> queue = liveStreamService.getQueue();
+            List<LiveStreamQueue> queue = liveStreamService.getQueue(channel);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -73,15 +67,11 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Get all media eligible for the livestream queue
-     * Includes public media + private media in public playlists
-     * GET /api/livestream/eligible-media
-     */
     @GetMapping("/eligible-media")
-    public ResponseEntity<Map<String, Object>> getEligibleMedia() {
+    public ResponseEntity<Map<String, Object>> getEligibleMedia(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            List<MediaFile> media = liveStreamService.getEligibleMedia();
+            List<MediaFile> media = liveStreamService.getEligibleMedia(channel);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -97,13 +87,9 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Add media to queue
-     * POST /api/livestream/queue
-     * Body: { "userId": 1, "mediaFileId": 123 }
-     */
     @PostMapping("/queue")
     public ResponseEntity<Map<String, Object>> addToQueue(
+            @RequestParam(defaultValue = "video") String channel,
             @RequestBody Map<String, Integer> request) {
         try {
             Integer userId = request.get("userId");
@@ -116,7 +102,7 @@ public class LiveStreamController {
                 return ResponseEntity.badRequest().body(error);
             }
             
-            LiveStreamQueue queueItem = liveStreamService.addToQueue(userId, mediaFileId);
+            LiveStreamQueue queueItem = liveStreamService.addToQueue(channel, userId, mediaFileId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -137,27 +123,19 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Remove item from queue
-     * DELETE /api/livestream/queue/{queueId}?userId={userId}
-     */
     @DeleteMapping("/queue/{queueId}")
     public ResponseEntity<Map<String, Object>> removeFromQueue(
             @PathVariable int queueId,
-            @RequestParam int userId) {
+            @RequestParam int userId,
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            liveStreamService.removeFromQueue(queueId, userId);
+            liveStreamService.removeFromQueue(channel, queueId, userId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Removed from queue");
             
             return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("success", false);
-            error.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
@@ -166,13 +144,9 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Vote to skip current media
-     * POST /api/livestream/skip
-     * Body: { "userId": 1 }
-     */
     @PostMapping("/skip")
     public ResponseEntity<Map<String, Object>> voteSkip(
+            @RequestParam(defaultValue = "video") String channel,
             @RequestBody Map<String, Integer> request) {
         try {
             Integer userId = request.get("userId");
@@ -184,7 +158,7 @@ public class LiveStreamController {
                 return ResponseEntity.badRequest().body(error);
             }
             
-            boolean skipped = liveStreamService.voteSkip(userId);
+            boolean skipped = liveStreamService.voteSkip(channel, userId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -192,11 +166,6 @@ public class LiveStreamController {
             response.put("message", skipped ? "Media skipped" : "Skip vote recorded");
             
             return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            Map<String, Object> error = new HashMap<>();
-            error.put("success", false);
-            error.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("success", false);
@@ -205,34 +174,26 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Server-Sent Events endpoint for real-time updates
-     * GET /api/livestream/updates
-     * Requires explicit @CrossOrigin since SSE responses need CORS headers for streaming
-     */
     @GetMapping(value = "/updates", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @CrossOrigin(origins = "*", allowedHeaders = "*", allowCredentials = "false", maxAge = 3600)
-    public SseEmitter streamUpdates() {
-        // Set reasonable timeout - 30 minutes
+    public SseEmitter streamUpdates(
+            @RequestParam(defaultValue = "video") String channel) {
         SseEmitter emitter = new SseEmitter(1800000L);
         
         try {
-            // Register this emitter with the service FIRST
-            liveStreamService.registerEmitter(emitter);
+            liveStreamService.registerEmitter(channel, emitter);
             
-            // Immediately send a heartbeat to establish connection
+            // Heartbeat
             emitter.send(SseEmitter.event()
                     .name("heartbeat")
                     .data("connected"));
             
-            // Send initial state quickly - minimize payload for faster transmission
-            LiveStreamState state = liveStreamService.getStreamState();
-            List<LiveStreamQueue> fullQueue = liveStreamService.getQueue();
+            // Initial state
+            LiveStreamState state = liveStreamService.getStreamState(channel);
+            List<LiveStreamQueue> fullQueue = liveStreamService.getQueue(channel);
             
-            // Only send currently playing + next 5 items to minimize initial payload
             List<LiveStreamQueue> minimalQueue = new ArrayList<>();
             if (fullQueue != null && !fullQueue.isEmpty()) {
-                // Find PLAYING item and include it + next few items
                 int playingIndex = -1;
                 for (int i = 0; i < fullQueue.size(); i++) {
                     if (fullQueue.get(i).getStatus() == LiveStreamQueue.QueueStatus.PLAYING) {
@@ -240,8 +201,6 @@ public class LiveStreamController {
                         break;
                     }
                 }
-                
-                // Include playing item + up to 5 queued items after it
                 int startIdx = Math.max(0, playingIndex == -1 ? 0 : playingIndex);
                 int endIdx = Math.min(fullQueue.size(), startIdx + 6);
                 minimalQueue = fullQueue.subList(startIdx, endIdx);
@@ -249,6 +208,7 @@ public class LiveStreamController {
             
             Map<String, Object> initialData = new HashMap<>();
             initialData.put("type", "init");
+            initialData.put("channel", channel);
             initialData.put("state", state);
             initialData.put("queue", minimalQueue);
             initialData.put("queueSize", fullQueue != null ? fullQueue.size() : 0);
@@ -258,34 +218,27 @@ public class LiveStreamController {
                     .name("init")
                     .data(initialData));
             
-            // Handle cleanup on completion or timeout
-            emitter.onCompletion(() -> liveStreamService.unregisterEmitter(emitter));
+            emitter.onCompletion(() -> liveStreamService.unregisterEmitter(channel, emitter));
             emitter.onTimeout(() -> {
-                liveStreamService.unregisterEmitter(emitter);
+                liveStreamService.unregisterEmitter(channel, emitter);
                 emitter.complete();
             });
-            emitter.onError((e) -> {
-                liveStreamService.unregisterEmitter(emitter);
-            });
+            emitter.onError((e) -> liveStreamService.unregisterEmitter(channel, emitter));
             
         } catch (Exception e) {
-            liveStreamService.unregisterEmitter(emitter);
+            liveStreamService.unregisterEmitter(channel, emitter);
             emitter.completeWithError(e);
         }
         
         return emitter;
     }
 
-    /**
-     * Report that the current media has ended - advances to next
-     * POST /api/livestream/media-ended
-     * Called by frontend when video/audio ends naturally
-     */
     @PostMapping("/media-ended")
-    public ResponseEntity<Map<String, Object>> mediaEnded() {
+    public ResponseEntity<Map<String, Object>> mediaEnded(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
             long start = System.currentTimeMillis();
-            liveStreamService.mediaEnded();
+            liveStreamService.mediaEnded(channel);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -301,14 +254,11 @@ public class LiveStreamController {
         }
     }
 
-    /**
-     * Manually advance to next media (admin/testing)
-     * POST /api/livestream/advance
-     */
     @PostMapping("/advance")
-    public ResponseEntity<Map<String, Object>> advanceToNext() {
+    public ResponseEntity<Map<String, Object>> advanceToNext(
+            @RequestParam(defaultValue = "video") String channel) {
         try {
-            liveStreamService.checkAndAdvanceIfNeeded();
+            liveStreamService.checkAndAdvanceIfNeeded(channel);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

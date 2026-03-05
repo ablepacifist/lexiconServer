@@ -28,7 +28,8 @@ public class LiveStreamScheduler {
     // @Scheduled(fixedRate = 5000)
     public void checkAndAdvanceStream() {
         try {
-            liveStreamService.checkAndAdvanceIfNeeded();
+            liveStreamService.checkAndAdvanceIfNeeded("music");
+            liveStreamService.checkAndAdvanceIfNeeded("video");
         } catch (Exception e) {
             logger.error("Error in live stream scheduler: {}", e.getMessage(), e);
         }
@@ -41,7 +42,8 @@ public class LiveStreamScheduler {
     @Scheduled(fixedRate = 10000)
     public void broadcastStateSync() {
         try {
-            liveStreamService.broadcastStateChange();
+            liveStreamService.broadcastStateChange("music");
+            liveStreamService.broadcastStateChange("video");
         } catch (Exception e) {
             logger.debug("Error broadcasting state sync: {}", e.getMessage());
         }
