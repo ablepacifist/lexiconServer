@@ -1,5 +1,6 @@
 package lexicon.data;
 
+import lexicon.object.MediaFile;
 import lexicon.object.Playlist;
 import lexicon.object.PlaylistItem;
 
@@ -69,4 +70,14 @@ public interface IPlaylistDatabase {
      * Reorder all items in a playlist
      */
     boolean reorderPlaylist(int playlistId, List<Integer> mediaFileIds);
+
+    /**
+     * Get all distinct media files that appear in any public playlist (single bulk query).
+     */
+    List<MediaFile> getMediaInPublicPlaylists();
+
+    /**
+     * Check if a specific media file appears in any public playlist.
+     */
+    boolean isMediaInAnyPublicPlaylist(int mediaFileId);
 }

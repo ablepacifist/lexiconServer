@@ -1,12 +1,15 @@
 package lexicon.data;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.object.Playlist;
 import lexicon.object.PlaylistItem;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -15,14 +18,35 @@ import java.util.List;
 @Repository
 public class HSQLPlaylistDatabase implements IPlaylistDatabase {
     
-    // Use same database as media files
     private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final HikariDataSource dataSource;
     
     @Autowired
     private IMediaDatabase mediaDatabase;
     
+    public HSQLPlaylistDatabase() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(DATABASE_URL);
+        config.setUsername("SA");
+        config.setPassword("");
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setConnectionTimeout(5000);
+        config.setIdleTimeout(60000);
+        config.setMaxLifetime(300000);
+        config.setPoolName("playlist-db");
+        this.dataSource = new HikariDataSource(config);
+    }
+    
+    @PreDestroy
+    public void cleanup() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+        }
+    }
+    
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(DATABASE_URL, "SA", "");
+        return dataSource.getConnection();
     }
     
     @PostConstruct
@@ -55,6 +79,16 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
         } catch (SQLException e) {
             System.err.println("Error initializing playlist schema:");
             e.printStackTrace();
+        }
+
+        // Add indexes for performance
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_playlists_created_by ON playlists(created_by)"); } catch (SQLException ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_playlists_public ON playlists(is_public)"); } catch (SQLException ignored) {}
+            try { stmt.execute("CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id, position)"); } catch (SQLException ignored) {}
+            System.out.println("✓ Playlist indexes verified");
+        } catch (SQLException e) {
+            System.err.println("Error creating playlist indexes: " + e.getMessage());
         }
     }
     
@@ -110,17 +144,47 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
     @Override
     public Playlist getPlaylistWithItems(int playlistId) {
         Playlist playlist = getPlaylistById(playlistId);
-        if (playlist != null) {
-            List<PlaylistItem> items = getPlaylistItems(playlistId);
-            
-            // Populate each item with full media file info
-            for (PlaylistItem item : items) {
-                MediaFile mediaFile = mediaDatabase.getMediaFile(item.getMediaFileId());
-                item.setMediaFile(mediaFile);
+        if (playlist == null) return null;
+
+        // Single JOIN query instead of N+1 per-item getMediaFile calls
+        String sql = "SELECT pi.playlist_id, pi.media_file_id, pi.position, " +
+                "mf.id, mf.filename, mf.original_filename, mf.content_type, mf.file_size, " +
+                "mf.file_path, mf.uploaded_by, mf.upload_date, mf.title, mf.description, " +
+                "mf.is_public, mf.media_type, mf.source_url " +
+                "FROM playlist_items pi " +
+                "JOIN media_files mf ON pi.media_file_id = mf.id " +
+                "WHERE pi.playlist_id = ? ORDER BY pi.position ASC";
+
+        List<PlaylistItem> items = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, playlistId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                PlaylistItem item = new PlaylistItem();
+                item.setPlaylistId(rs.getInt("playlist_id"));
+                item.setMediaFileId(rs.getInt("media_file_id"));
+                item.setPosition(rs.getInt("position"));
+
+                MediaFile mf = new MediaFile(
+                    rs.getInt("id"), rs.getString("filename"), rs.getString("original_filename"),
+                    rs.getString("content_type"), rs.getLong("file_size"), rs.getString("file_path"),
+                    rs.getInt("uploaded_by"), rs.getString("title"), rs.getString("description"),
+                    rs.getBoolean("is_public")
+                );
+                Timestamp ts = rs.getTimestamp("upload_date");
+                if (ts != null) mf.setUploadDate(ts.toLocalDateTime());
+                String mt = rs.getString("media_type");
+                if (mt != null) mf.setMediaType(MediaType.fromString(mt));
+                mf.setSourceUrl(rs.getString("source_url"));
+                item.setMediaFile(mf);
+
+                items.add(item);
             }
-            
-            playlist.setItems(items);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
+        playlist.setItems(items);
         return playlist;
     }
     
@@ -318,5 +382,61 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
         }
         
         return playlist;
+    }
+
+    /**
+     * Bulk query: get all distinct media file IDs that appear in any public playlist.
+     */
+    @Override
+    public List<MediaFile> getMediaInPublicPlaylists() {
+        String sql = "SELECT DISTINCT mf.id, mf.filename, mf.original_filename, mf.content_type, mf.file_size, " +
+                "mf.file_path, mf.uploaded_by, mf.upload_date, mf.title, mf.description, " +
+                "mf.is_public, mf.media_type, mf.source_url " +
+                "FROM playlist_items pi " +
+                "JOIN playlists p ON pi.playlist_id = p.id " +
+                "JOIN media_files mf ON pi.media_file_id = mf.id " +
+                "WHERE p.is_public = true";
+        List<MediaFile> results = new ArrayList<>();
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                MediaFile mf = new MediaFile(
+                    rs.getInt("id"), rs.getString("filename"), rs.getString("original_filename"),
+                    rs.getString("content_type"), rs.getLong("file_size"), rs.getString("file_path"),
+                    rs.getInt("uploaded_by"), rs.getString("title"), rs.getString("description"),
+                    rs.getBoolean("is_public")
+                );
+                Timestamp ts = rs.getTimestamp("upload_date");
+                if (ts != null) mf.setUploadDate(ts.toLocalDateTime());
+                String mt = rs.getString("media_type");
+                if (mt != null) mf.setMediaType(MediaType.fromString(mt));
+                mf.setSourceUrl(rs.getString("source_url"));
+                results.add(mf);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return results;
+    }
+
+    /**
+     * Check if a specific media file appears in any public playlist (single query, no N+1).
+     */
+    @Override
+    public boolean isMediaInAnyPublicPlaylist(int mediaFileId) {
+        String sql = "SELECT 1 FROM playlist_items pi " +
+                "JOIN playlists p ON pi.playlist_id = p.id " +
+                "WHERE p.is_public = true AND pi.media_file_id = ? " +
+                "FETCH FIRST 1 ROW ONLY";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, mediaFileId);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 }

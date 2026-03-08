@@ -182,7 +182,6 @@ public class LiveStreamService {
         if (voteCount >= state.getRequiredSkipVotes()) {
             skipToNextFast(channel, currentQueueId);
             broadcastStateChange(channel);
-            broadcastLightStateChange(channel);
             broadcastQueueChange(channel);
             System.out.println("[SKIP:" + channel + "] Total time: " + (System.currentTimeMillis() - start) + "ms");
             return true;
@@ -224,7 +223,6 @@ public class LiveStreamService {
             lastMediaEndedTime.put(channel, System.currentTimeMillis());
             
             broadcastStateChange(channel);
-            broadcastLightStateChange(channel);
             broadcastQueueChange(channel);
         }
     }
@@ -258,7 +256,6 @@ public class LiveStreamService {
             liveStreamDb.setCurrentMedia(channel, nextItem.getMediaFileId(), 0);
             liveStreamDb.clearSkipVotesForItem(nextItem.getId());
             broadcastStateChange(channel);
-            broadcastLightStateChange(channel);
             broadcastQueueChange(channel);
         } else {
             // Queue empty: pick random media of the correct type for this channel
@@ -268,7 +265,6 @@ public class LiveStreamService {
                 liveStreamDb.updateQueueStatus(queueId, LiveStreamQueue.QueueStatus.PLAYING);
                 liveStreamDb.setCurrentMedia(channel, randomMediaId, 0);
                 broadcastStateChange(channel);
-                broadcastLightStateChange(channel);
                 broadcastQueueChange(channel);
             }
         }
@@ -306,20 +302,12 @@ public class LiveStreamService {
                 }
             }
             
-            // 2. Get media from public playlists
-            List<Playlist> publicPlaylists = playlistDb.getPublicPlaylists();
-            for (Playlist playlist : publicPlaylists) {
-                Playlist fullPlaylist = playlistDb.getPlaylistWithItems(playlist.getId());
-                if (fullPlaylist != null && fullPlaylist.getItems() != null) {
-                    for (PlaylistItem item : fullPlaylist.getItems()) {
-                        MediaFile media = item.getMediaFile();
-                        if (media != null && !addedIds.contains(media.getId())) {
-                            if (media.getMediaType() == targetType) {
-                                eligibleMedia.add(media);
-                                addedIds.add(media.getId());
-                            }
-                        }
-                    }
+            // 2. Get media from public playlists (single bulk query instead of N+1)
+            List<MediaFile> playlistMedia = playlistDb.getMediaInPublicPlaylists();
+            for (MediaFile media : playlistMedia) {
+                if (media.getMediaType() == targetType && !addedIds.contains(media.getId())) {
+                    eligibleMedia.add(media);
+                    addedIds.add(media.getId());
                 }
             }
             
@@ -340,17 +328,7 @@ public class LiveStreamService {
     
     private boolean isMediaInPublicPlaylist(int mediaFileId) {
         try {
-            List<Playlist> publicPlaylists = playlistDb.getPublicPlaylists();
-            for (Playlist playlist : publicPlaylists) {
-                List<PlaylistItem> items = playlistDb.getPlaylistItems(playlist.getId());
-                if (items != null) {
-                    for (PlaylistItem item : items) {
-                        if (item.getMediaFileId() == mediaFileId) {
-                            return true;
-                        }
-                    }
-                }
-            }
+            return playlistDb.isMediaInAnyPublicPlaylist(mediaFileId);
         } catch (Exception e) {
             System.err.println("Error checking public playlists: " + e.getMessage());
         }
@@ -420,17 +398,18 @@ public class LiveStreamService {
             try {
                 LiveStreamState state = liveStreamDb.getStreamState(channel);
                 
-                Map<String, Object> lightState = new HashMap<>();
-                lightState.put("id", state.getId());
-                lightState.put("channel", channel);
-                lightState.put("currentMediaId", state.getCurrentMediaId());
-                lightState.put("currentMedia", state.getCurrentMedia());
-                lightState.put("currentStartTime", state.getCurrentStartTime());
-                lightState.put("currentPositionMs", state.getCurrentPositionMs());
-                lightState.put("totalSkipVotes", state.getTotalSkipVotes());
-                lightState.put("requiredSkipVotes", state.getRequiredSkipVotes());
+                Map<String, Object> stateData = new HashMap<>();
+                stateData.put("id", state.getId());
+                stateData.put("channel", channel);
+                stateData.put("currentMediaId", state.getCurrentMediaId());
+                stateData.put("currentMedia", state.getCurrentMedia());
+                stateData.put("currentStartTime", state.getCurrentStartTime());
+                stateData.put("currentPositionMs", state.getCurrentPositionMs());
+                stateData.put("totalSkipVotes", state.getTotalSkipVotes());
+                stateData.put("requiredSkipVotes", state.getRequiredSkipVotes());
+                stateData.put("timestamp", System.currentTimeMillis());
                 
-                sendUpdateToClients(channel, "state-update", lightState);
+                sendUpdateToClients(channel, "state-update", stateData);
             } catch (Exception e) {
                 System.err.println("Error broadcasting state change for " + channel + ": " + e.getMessage());
             }
@@ -462,20 +441,5 @@ public class LiveStreamService {
                 System.err.println("Error broadcasting queue change for " + channel + ": " + e.getMessage());
             }
         });
-    }
-
-    public void broadcastLightStateChange(String channel) {
-        LiveStreamState state = liveStreamDb.getStreamState(channel);
-        
-        Map<String, Object> lightState = new HashMap<>();
-        lightState.put("channel", channel);
-        lightState.put("currentMediaId", state.getCurrentMediaId());
-        lightState.put("currentMedia", state.getCurrentMedia());
-        lightState.put("currentStartTime", state.getCurrentStartTime());
-        lightState.put("currentPositionMs", state.getCurrentPositionMs());
-        lightState.put("totalSkipVotes", state.getTotalSkipVotes());
-        lightState.put("timestamp", System.currentTimeMillis());
-        
-        sendUpdateToClients(channel, "state-update-light", lightState);
     }
 }

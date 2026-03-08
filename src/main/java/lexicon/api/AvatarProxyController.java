@@ -155,4 +155,35 @@ public class AvatarProxyController {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(error);
         }
     }
+
+    /**
+     * Proxy the actual avatar image file through the Lexicon backend.
+     * This avoids cross-origin blocks in browsers like Brave that have aggressive shields.
+     * GET /api/avatar/image/{path} → bridge GET /uploads/avatars/{path}
+     */
+    @GetMapping("/image/{*path}")
+    public ResponseEntity<byte[]> proxyAvatarImage(@PathVariable String path) {
+        try {
+            String url = BRIDGE_BASE_URL + "/uploads/avatars/" + path;
+            ResponseEntity<byte[]> bridgeResponse = restTemplate.getForEntity(url, byte[].class);
+
+            if (bridgeResponse.getStatusCode().is2xxSuccessful() && bridgeResponse.getBody() != null) {
+                // Determine content type from the bridge response, fallback to jpeg
+                MediaType contentType = bridgeResponse.getHeaders().getContentType();
+                if (contentType == null) contentType = MediaType.IMAGE_JPEG;
+
+                return ResponseEntity.ok()
+                    .contentType(contentType)
+                    .header("Cache-Control", "no-cache, must-revalidate")
+                    .body(bridgeResponse.getBody());
+            }
+            return ResponseEntity.notFound().build();
+
+        } catch (HttpClientErrorException e) {
+            return ResponseEntity.status(e.getStatusCode()).build();
+        } catch (Exception e) {
+            System.err.println("Avatar image proxy error: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+        }
+    }
 }

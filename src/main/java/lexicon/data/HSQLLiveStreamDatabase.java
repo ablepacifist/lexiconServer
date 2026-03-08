@@ -133,6 +133,15 @@ public class HSQLLiveStreamDatabase implements ILiveStreamDatabase {
             initChannelRow(stmt, 2, "music");
             
             stmt.close();
+
+            // Add performance indexes
+            Statement idxStmt = conn.createStatement();
+            try { idxStmt.execute("CREATE INDEX IF NOT EXISTS idx_lsq_channel_status ON live_stream_queue(channel, status)"); } catch (SQLException ignored) {}
+            try { idxStmt.execute("CREATE INDEX IF NOT EXISTS idx_lsq_channel_position ON live_stream_queue(channel, position)"); } catch (SQLException ignored) {}
+            try { idxStmt.execute("CREATE INDEX IF NOT EXISTS idx_lss_channel ON live_stream_state(channel)"); } catch (SQLException ignored) {}
+            try { idxStmt.execute("CREATE INDEX IF NOT EXISTS idx_lssv_queue ON live_stream_skip_votes(queue_item_id)"); } catch (SQLException ignored) {}
+            idxStmt.close();
+
             System.out.println("Live stream tables initialized with channel support");
             
         } catch (SQLException e) {
