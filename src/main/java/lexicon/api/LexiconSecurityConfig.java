@@ -98,8 +98,12 @@ public class LexiconSecurityConfig {
         // Add common playit patterns (use * wildcard, NOT regex .*)
         originPatterns.add("http://147.185.221.24:*");
         originPatterns.add("https://147.185.221.24:*");
+        originPatterns.add("http://209.25.140.16:*");
+        originPatterns.add("https://209.25.140.16:*");
         originPatterns.add("http://*.playit.pub:*");
         originPatterns.add("https://*.playit.pub:*");
+        originPatterns.add("http://*.with.playit.plus:*");
+        originPatterns.add("https://*.with.playit.plus:*");
         
         // Add custom domain patterns (Cloudflare tunnel)
         originPatterns.add("https://alex-dyakin.com");
