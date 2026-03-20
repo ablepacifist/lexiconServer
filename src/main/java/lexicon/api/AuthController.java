@@ -1,11 +1,13 @@
 package lexicon.api;
 
 import lexicon.logic.PlayerManagerService;
+import lexicon.logic.RememberMeManagerService;
 import lexicon.object.Player;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -22,11 +24,14 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class AuthController {
 
+    private static final String COOKIE_NAME = "remember-me";
+    private static final int COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+
     @Autowired
     private PlayerManagerService playerManagerService;
 
     @Autowired
-    private RememberMeService rememberMeService;
+    private RememberMeManagerService rememberMeManagerService;
 
     /**
      * Login endpoint - creates a session
@@ -69,7 +74,8 @@ public class AuthController {
 
             // If "remember me" was checked, issue a persistent cookie
             if (rememberMe) {
-                rememberMeService.createToken(player.getId(), response);
+                String rawToken = rememberMeManagerService.createToken(player.getId());
+                addRememberMeCookie(response, rawToken);
             }
 
             return ResponseEntity.ok(resp);
@@ -147,8 +153,12 @@ public class AuthController {
 
             // No valid session — try remember-me cookie
             if (userId == null) {
-                userId = rememberMeService.validateAndRotate(request, response);
-                if (userId != null) {
+                String rawToken = getCookieValue(request, COOKIE_NAME);
+                RememberMeManagerService.RememberMeResult result = 
+                    rememberMeManagerService.validateAndRotate(rawToken);
+                if (result != null) {
+                    userId = result.userId();
+                    addRememberMeCookie(response, result.newRawToken());
                     // Re-create the session from the remember-me token
                     session = request.getSession(true);
                     Player remembered = playerManagerService.getPlayerById(userId);
@@ -158,10 +168,12 @@ public class AuthController {
                         session.setMaxInactiveInterval(30 * 24 * 60 * 60);
                     } else {
                         // User was deleted — clear the token
-                        rememberMeService.clearTokens(userId, response);
+                        rememberMeManagerService.clearTokens(userId);
+                        clearRememberMeCookie(response);
                         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                     }
                 } else {
+                    clearRememberMeCookie(response);
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                 }
             }
@@ -200,17 +212,44 @@ public class AuthController {
             if (session != null) {
                 Integer userId = (Integer) session.getAttribute("userId");
                 if (userId != null) {
-                    rememberMeService.clearTokens(userId, response);
+                    rememberMeManagerService.clearTokens(userId);
                 }
                 session.invalidate();
-            } else {
-                // Even without a session, clear the remember-me cookie
-                rememberMeService.clearTokens(0, response);
             }
+            clearRememberMeCookie(response);
             return ResponseEntity.ok(Map.of("success", true, "message", "Logged out successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("Logout failed: " + e.getMessage());
         }
+    }
+
+    private void addRememberMeCookie(HttpServletResponse response, String rawToken) {
+        Cookie cookie = new Cookie(COOKIE_NAME, rawToken);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(COOKIE_MAX_AGE);
+        response.addCookie(cookie);
+    }
+
+    private void clearRememberMeCookie(HttpServletResponse response) {
+        Cookie cookie = new Cookie(COOKIE_NAME, "");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
+    }
+
+    private String getCookieValue(HttpServletRequest request, String name) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if (name.equals(c.getName())) {
+                return c.getValue();
+            }
+        }
+        return null;
     }
 }
