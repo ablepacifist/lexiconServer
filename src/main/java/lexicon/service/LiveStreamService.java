@@ -133,6 +133,36 @@ public class LiveStreamService {
         return result;
     }
     
+    public int addPlaylistToQueue(String channel, int userId, int playlistId) {
+        Playlist playlist = playlistDb.getPlaylistWithItems(playlistId);
+        if (playlist == null) {
+            throw new IllegalArgumentException("Playlist not found");
+        }
+        if (!playlist.isPublic() && playlist.getCreatedBy() != userId) {
+            throw new SecurityException("Cannot queue a private playlist you don't own");
+        }
+        
+        String expectedType = channel.equals("music") ? "MUSIC" : "VIDEO";
+        if (playlist.getMediaType() == null || !expectedType.equals(playlist.getMediaType().name())) {
+            throw new IllegalArgumentException("Playlist type " + playlist.getMediaType() + " doesn't match " + channel + " channel");
+        }
+        
+        int added = 0;
+        for (PlaylistItem item : playlist.getItems()) {
+            try {
+                liveStreamDb.addToQueue(channel, item.getMediaFileId(), userId);
+                added++;
+            } catch (Exception e) {
+                // Skip items that fail (e.g. deleted media)
+            }
+        }
+        
+        if (added > 0) {
+            broadcastQueueChange(channel);
+        }
+        return added;
+    }
+    
     public boolean removeFromQueue(String channel, int queueId, int userId) {
         List<LiveStreamQueue> items = liveStreamDb.getQueueItemsLightweight(channel);
         LiveStreamQueue item = items.stream()

@@ -123,6 +123,47 @@ public class LiveStreamController {
         }
     }
 
+    @PostMapping("/queue/playlist")
+    public ResponseEntity<Map<String, Object>> addPlaylistToQueue(
+            @RequestParam(defaultValue = "video") String channel,
+            @RequestBody Map<String, Integer> request) {
+        try {
+            Integer userId = request.get("userId");
+            Integer playlistId = request.get("playlistId");
+            
+            if (userId == null || playlistId == null) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("success", false);
+                error.put("message", "userId and playlistId are required");
+                return ResponseEntity.badRequest().body(error);
+            }
+            
+            int added = liveStreamService.addPlaylistToQueue(channel, userId, playlistId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Added " + added + " tracks to queue");
+            response.put("addedCount", added);
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (SecurityException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("message", "Failed to add playlist to queue: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
     @DeleteMapping("/queue/{queueId}")
     public ResponseEntity<Map<String, Object>> removeFromQueue(
             @PathVariable int queueId,

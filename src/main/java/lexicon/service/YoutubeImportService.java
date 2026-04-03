@@ -13,7 +13,6 @@ import java.io.InputStreamReader;
 @Service
 public class YoutubeImportService {
     
-    private static final String COOKIES_FILE = "/home/alex/Documents/lexicon/Lexicon/full-back-end-server/lexiconServer/cookies.txt";
     private static final String MEDIA_UPLOAD_URL = "http://localhost:36568/api/media/upload-from-url";
     
     /**
@@ -22,8 +21,9 @@ public class YoutubeImportService {
      */
     public PlaylistMetadata fetchPlaylistMetadata(String playlistUrl) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
-            "yt-dlp",
-            "--cookies", COOKIES_FILE,
+            "/usr/local/bin/yt-dlp",
+            "--cookies-from-browser", "firefox",
+            "--remote-components", "ejs:github",
             "--dump-json",
             "--flat-playlist",
             playlistUrl
