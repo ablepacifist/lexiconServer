@@ -2,30 +2,43 @@ package lexicon.logic;
 
 import lexicon.object.ChatFile;
 
+import java.util.Map;
+
 /**
  * Service interface for chat file upload operations
  */
 public interface ChatFileManagerService {
 
     /**
-     * Store an uploaded chat file (image/GIF), generate thumbnail, and persist metadata.
-     * @return the persisted ChatFile with generated ID and URLs
+     * Store an uploaded chat file (image/GIF), generate thumbnail, persist metadata,
+     * and return the full API response map with URLs.
      */
-    ChatFile uploadChatFile(byte[] fileData, String originalFilename, String mimeType,
-                            int userId, Integer channelId);
+    Map<String, Object> uploadChatFile(byte[] fileData, String originalFilename, String mimeType,
+                                       int userId, Integer channelId);
 
     /**
-     * Get chat file metadata by ID
+     * Get the original file for serving. Returns null if file doesn't exist.
      */
-    ChatFile getChatFile(long fileId);
+    ChatFileServingInfo getFileForServing(long fileId);
 
     /**
-     * Get the full filesystem path for a chat file's stored file
+     * Get the thumbnail for serving. Falls back to original if no thumbnail. Returns null if not found.
      */
-    java.nio.file.Path getFilePath(ChatFile chatFile);
+    ChatFileServingInfo getThumbnailForServing(long fileId);
 
     /**
-     * Get the full filesystem path for a chat file's thumbnail
+     * Simple result holder for file serving responses.
      */
-    java.nio.file.Path getThumbnailPath(ChatFile chatFile);
+    class ChatFileServingInfo {
+        private final java.nio.file.Path path;
+        private final String contentType;
+
+        public ChatFileServingInfo(java.nio.file.Path path, String contentType) {
+            this.path = path;
+            this.contentType = contentType;
+        }
+
+        public java.nio.file.Path getPath() { return path; }
+        public String getContentType() { return contentType; }
+    }
 }

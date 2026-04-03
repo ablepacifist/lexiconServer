@@ -16,8 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class ChatFileManager implements ChatFileManagerService {
@@ -38,7 +37,7 @@ public class ChatFileManager implements ChatFileManagerService {
     }
 
     @Override
-    public ChatFile uploadChatFile(byte[] fileData, String originalFilename, String mimeType,
+    public Map<String, Object> uploadChatFile(byte[] fileData, String originalFilename, String mimeType,
                                    int userId, Integer channelId) {
         if (fileData == null || fileData.length == 0) {
             throw new IllegalArgumentException("File data cannot be empty");
@@ -111,26 +110,56 @@ public class ChatFileManager implements ChatFileManagerService {
 
         long id = chatFileDatabase.addChatFile(chatFile);
         chatFile.setId(id);
-        return chatFile;
+
+        return buildUploadResponse(chatFile);
     }
 
     @Override
-    public ChatFile getChatFile(long fileId) {
-        return chatFileDatabase.getChatFile(fileId);
+    public ChatFileServingInfo getFileForServing(long fileId) {
+        ChatFile chatFile = chatFileDatabase.getChatFile(fileId);
+        if (chatFile == null) return null;
+
+        Path filePath = getChatUploadsDir().resolve(chatFile.getStoredFilename());
+        if (!Files.exists(filePath)) return null;
+
+        return new ChatFileServingInfo(filePath, chatFile.getMimeType());
     }
 
     @Override
-    public Path getFilePath(ChatFile chatFile) {
-        return getChatUploadsDir().resolve(chatFile.getStoredFilename());
-    }
+    public ChatFileServingInfo getThumbnailForServing(long fileId) {
+        ChatFile chatFile = chatFileDatabase.getChatFile(fileId);
+        if (chatFile == null) return null;
 
-    @Override
-    public Path getThumbnailPath(ChatFile chatFile) {
-        if (chatFile.getThumbnailFilename() == null) {
-            // Fall back to original file if no thumbnail
-            return getFilePath(chatFile);
+        Path thumbPath;
+        String contentType;
+
+        if (chatFile.getThumbnailFilename() != null) {
+            thumbPath = getChatUploadsDir().resolve("thumbnails").resolve(chatFile.getThumbnailFilename());
+            contentType = "image/jpeg";
+        } else {
+            // Fall back to original file
+            thumbPath = getChatUploadsDir().resolve(chatFile.getStoredFilename());
+            contentType = chatFile.getMimeType();
         }
-        return getChatUploadsDir().resolve("thumbnails").resolve(chatFile.getThumbnailFilename());
+
+        if (!Files.exists(thumbPath)) return null;
+
+        return new ChatFileServingInfo(thumbPath, contentType);
+    }
+
+    private Map<String, Object> buildUploadResponse(ChatFile chatFile) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", chatFile.getId());
+        response.put("url", "/api/chat/files/" + chatFile.getId());
+        response.put("thumbnailUrl", "/api/chat/files/" + chatFile.getId() + "/thumb");
+        response.put("originalFilename", chatFile.getOriginalFilename());
+        response.put("mimeType", chatFile.getMimeType());
+        response.put("width", chatFile.getWidth());
+        response.put("height", chatFile.getHeight());
+        response.put("fileSize", chatFile.getFileSize());
+        response.put("uploadedBy", chatFile.getUploadedBy());
+        response.put("createdAt", chatFile.getCreatedAt() != null ? chatFile.getCreatedAt().toString() : null);
+        return response;
     }
 
     private Path getChatUploadsDir() {
