@@ -13,10 +13,11 @@ public class TextMessage {
     private int userId;
     private String username;
     private String content;
-    private String messageType; // TEXT, MEDIA_SHARE, SYSTEM, BOT_COMMAND
-    private Long mediaFileId; // nullable - linked media file
+    private String messageType; // TEXT, IMAGE, GIF, MEDIA_SHARE, MIXED, SYSTEM, BOT_COMMAND
+    private Long mediaFileId; // nullable - linked media file or chat file
     private Long replyToId; // nullable - threaded replies
     private boolean isPinned;
+    private java.util.Map<String, Object> attachment; // transient - populated on read for IMAGE/GIF messages
     private LocalDateTime createdAt;
     private LocalDateTime editedAt;
     private LocalDateTime deletedAt;
@@ -75,6 +76,9 @@ public class TextMessage {
 
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+
+    public java.util.Map<String, Object> getAttachment() { return attachment; }
+    public void setAttachment(java.util.Map<String, Object> attachment) { this.attachment = attachment; }
 
     @Override
     public String toString() {
