@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "lexicon.storage")
 public class StorageProperties {
     
-    private String basePath = "C:/Users/HP/lexicon-storage";
+    private String basePath = "//wsl.localhost/Ubuntu/mnt/wsl/PHYSICALDRIVE1p2/lexicon-storage";
     private String tempPath;
     private String audiobooksPath;
     private String musicPath;

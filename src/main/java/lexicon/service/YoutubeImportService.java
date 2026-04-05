@@ -13,7 +13,6 @@ import java.io.InputStreamReader;
 @Service
 public class YoutubeImportService {
     
-    private static final String COOKIES_FILE = System.getProperty("user.dir") + java.io.File.separator + "cookies.txt";
     private static final String MEDIA_UPLOAD_URL = "http://localhost:36568/api/media/upload-from-url";
     
     /**
@@ -23,7 +22,8 @@ public class YoutubeImportService {
     public PlaylistMetadata fetchPlaylistMetadata(String playlistUrl) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
             "yt-dlp",
-            "--cookies", COOKIES_FILE,
+            "--cookies-from-browser", "firefox",
+            "--remote-components", "ejs:github",
             "--dump-json",
             "--flat-playlist",
             playlistUrl

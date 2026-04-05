@@ -70,14 +70,14 @@ public class YtDlpService {
         List<String> command = new ArrayList<>();
         command.add("yt-dlp");
         
-        // Use cookies file for YouTube authentication (Windows compatible)
-        String cookiesPath = System.getProperty("user.dir") + java.io.File.separator + "cookies.txt";
-        java.io.File cookiesFile = new java.io.File(cookiesPath);
-        if (cookiesFile.exists()) {
-            command.add("--cookies");
-            command.add(cookiesPath);
-        }
-        
+        // Use Firefox browser cookies for YouTube authentication
+        command.add("--cookies-from-browser");
+        command.add("firefox");
+
+        // Enable remote EJS challenge solver for YouTube's JS challenges
+        command.add("--remote-components");
+        command.add("ejs:github");
+
         // Skip unavailable fragments (helps with live streams and problematic videos)
         command.add("--skip-unavailable-fragments");
         
