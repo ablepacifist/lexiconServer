@@ -13,7 +13,7 @@ import java.io.InputStreamReader;
 @Service
 public class YoutubeImportService {
     
-    private static final String COOKIES_FILE = "/home/alex/Documents/lexicon/Lexicon/full-back-end-server/lexiconServer/cookies.txt";
+    private static final String COOKIES_FILE = System.getProperty("user.dir") + java.io.File.separator + "cookies.txt";
     private static final String MEDIA_UPLOAD_URL = "http://localhost:36568/api/media/upload-from-url";
     
     /**

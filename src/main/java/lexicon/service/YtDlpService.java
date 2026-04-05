@@ -72,11 +72,15 @@ public class YtDlpService {
         String outputTemplate = new File(outputDir, filenameBase + ".%(ext)s").getAbsolutePath();
         
         List<String> command = new ArrayList<>();
-        // Use the latest yt-dlp from /usr/local/bin (updated version)
-        command.add("/usr/local/bin/yt-dlp");
+        command.add("yt-dlp");
         
-        // Don't use cookies - they cause issues from different networks
-        // Instead, use extractor args for better YouTube compatibility
+        // Use cookies if configured for authenticated YouTube access
+        if (cookiesPath != null && !cookiesPath.isEmpty()) {
+            command.add("--cookies");
+            command.add(cookiesPath);
+        }
+        
+        // Use extractor args for better YouTube compatibility
         command.add("--extractor-args");
         command.add("youtube:player_client=android");
         
@@ -187,19 +191,11 @@ public class YtDlpService {
      */
     private boolean isYtDlpInstalled() {
         try {
-            // Use full path since Java process PATH may not include /usr/local/bin
-            Process process = new ProcessBuilder("/usr/local/bin/yt-dlp", "--version").start();
+            Process process = new ProcessBuilder("yt-dlp", "--version").start();
             process.waitFor(5, TimeUnit.SECONDS);
             return process.exitValue() == 0;
         } catch (Exception e) {
-            // Fall back to PATH lookup
-            try {
-                Process process = new ProcessBuilder("yt-dlp", "--version").start();
-                process.waitFor(5, TimeUnit.SECONDS);
-                return process.exitValue() == 0;
-            } catch (Exception e2) {
-                return false;
-            }
+            return false;
         }
     }
     
