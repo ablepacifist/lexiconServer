@@ -210,7 +210,8 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
     
     @Override
     public List<Playlist> getPublicPlaylists() {
-        String sql = "SELECT * FROM playlists WHERE is_public = true ORDER BY created_date DESC";
+        String sql = "SELECT p.*, (SELECT COUNT(*) FROM playlist_items pi WHERE pi.playlist_id = p.id) AS item_count " +
+                     "FROM playlists p WHERE p.is_public = true ORDER BY p.created_date DESC";
         List<Playlist> playlists = new ArrayList<>();
         
         try (Connection conn = getConnection();
@@ -219,7 +220,9 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
             ResultSet rs = stmt.executeQuery(sql);
             
             while (rs.next()) {
-                playlists.add(mapResultSetToPlaylist(rs));
+                Playlist p = mapResultSetToPlaylist(rs);
+                p.setItemCount(rs.getInt("item_count"));
+                playlists.add(p);
             }
         } catch (SQLException e) {
             e.printStackTrace();

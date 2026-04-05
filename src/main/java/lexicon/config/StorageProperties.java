@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "lexicon.storage")
 public class StorageProperties {
     
-    private String basePath = "/media/alexpdyak32/7db05fe3-9f6a-46cb-82dd-8ff00d8488a0/lexicon-storage";
+    private String basePath = "C:/Users/HP/lexicon-storage";
     private String tempPath;
     private String audiobooksPath;
     private String musicPath;
@@ -99,15 +99,15 @@ public class StorageProperties {
         
         switch (mediaType.toUpperCase()) {
             case "AUDIOBOOK":
-                basePath = audiobooksPath;
+                basePath = getAudiobooksPath();
                 sizePath = (fileSize > largeFileThreshold) ? "/large" : "/standard";
                 break;
             case "MUSIC":
-                basePath = musicPath;
+                basePath = getMusicPath();
                 sizePath = (fileSize > smallFileThreshold) ? "/lossless" : "/compressed";
                 break;
             case "VIDEO":
-                basePath = videosPath;
+                basePath = getVideosPath();
                 sizePath = "/original";
                 break;
             default:
@@ -122,34 +122,34 @@ public class StorageProperties {
      * Get thumbnails path for videos
      */
     public String getVideoThumbnailsPath() {
-        return videosPath + "/thumbnails";
+        return getVideosPath() + "/thumbnails";
     }
     
     /**
      * Get transcoded videos path
      */
     public String getVideoTranscodedPath() {
-        return videosPath + "/transcoded";
+        return getVideosPath() + "/transcoded";
     }
     
     /**
      * Get temp chunks path
      */
     public String getTempChunksPath() {
-        return tempPath + "/chunks";
+        return getTempPath() + "/chunks";
     }
     
     /**
      * Get processing temp path
      */
     public String getTempProcessingPath() {
-        return tempPath + "/processing";
+        return getTempPath() + "/processing";
     }
     
     /**
      * Get cache path
      */
     public String getCachePath() {
-        return tempPath + "/cache";
+        return getTempPath() + "/cache";
     }
 }

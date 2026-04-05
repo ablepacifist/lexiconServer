@@ -1,12 +1,15 @@
 package lexicon.api;
 
 import lexicon.logic.PlayerManagerService;
+import lexicon.logic.RememberMeManagerService;
 import lexicon.object.Player;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
 import java.util.HashMap;
@@ -21,16 +24,23 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class AuthController {
 
+    private static final String COOKIE_NAME = "remember-me";
+    private static final int COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+
     @Autowired
     private PlayerManagerService playerManagerService;
+
+    @Autowired
+    private RememberMeManagerService rememberMeManagerService;
 
     /**
      * Login endpoint - creates a session
      */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody Map<String, String> payload, HttpServletRequest request) {
-        String username = payload.get("username");
-        String password = payload.get("password");
+    public ResponseEntity<?> login(@RequestBody Map<String, Object> payload, HttpServletRequest request, HttpServletResponse response) {
+        String username = (String) payload.get("username");
+        String password = (String) payload.get("password");
+        boolean rememberMe = Boolean.TRUE.equals(payload.get("rememberMe"));
 
         if (username == null || password == null) {
             return ResponseEntity.badRequest().body("Username and password required");
@@ -52,17 +62,23 @@ public class AuthController {
             session.setMaxInactiveInterval(30 * 24 * 60 * 60); // 30 days
 
             // Return user info
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("playerId", player.getId());
-            response.put("id", player.getId());
-            response.put("username", player.getUsername());
-            response.put("displayName", player.getDisplayName() != null ? 
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("success", true);
+            resp.put("playerId", player.getId());
+            resp.put("id", player.getId());
+            resp.put("username", player.getUsername());
+            resp.put("displayName", player.getDisplayName() != null ? 
                 player.getDisplayName() : player.getUsername());
-            response.put("email", player.getEmail() != null ? player.getEmail() : "");
-            response.put("level", player.getLevel());
+            resp.put("email", player.getEmail() != null ? player.getEmail() : "");
+            resp.put("level", player.getLevel());
 
-            return ResponseEntity.ok(response);
+            // If "remember me" was checked, issue a persistent cookie
+            if (rememberMe) {
+                String rawToken = rememberMeManagerService.createToken(player.getId());
+                addRememberMeCookie(response, rawToken);
+            }
+
+            return ResponseEntity.ok(resp);
 
         } catch (Exception e) {
             System.err.println("Login error: " + e.getMessage());
@@ -126,19 +142,40 @@ public class AuthController {
      * Get current logged-in user from session
      */
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser(HttpServletRequest request) {
+    public ResponseEntity<?> getCurrentUser(HttpServletRequest request, HttpServletResponse response) {
         try {
             HttpSession session = request.getSession(false);
-            
-            if (session == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            Integer userId = null;
+
+            if (session != null) {
+                userId = (Integer) session.getAttribute("userId");
             }
 
-            Integer userId = (Integer) session.getAttribute("userId");
-            String username = (String) session.getAttribute("username");
-
-            if (userId == null || username == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            // No valid session — try remember-me cookie
+            if (userId == null) {
+                String rawToken = getCookieValue(request, COOKIE_NAME);
+                RememberMeManagerService.RememberMeResult result = 
+                    rememberMeManagerService.validateAndRotate(rawToken);
+                if (result != null) {
+                    userId = result.userId();
+                    addRememberMeCookie(response, result.newRawToken());
+                    // Re-create the session from the remember-me token
+                    session = request.getSession(true);
+                    Player remembered = playerManagerService.getPlayerById(userId);
+                    if (remembered != null) {
+                        session.setAttribute("userId", remembered.getId());
+                        session.setAttribute("username", remembered.getUsername());
+                        session.setMaxInactiveInterval(30 * 24 * 60 * 60);
+                    } else {
+                        // User was deleted — clear the token
+                        rememberMeManagerService.clearTokens(userId);
+                        clearRememberMeCookie(response);
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                    }
+                } else {
+                    clearRememberMeCookie(response);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                }
             }
 
             // Get full player details
@@ -147,15 +184,15 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("id", player.getId());
-            response.put("username", player.getUsername());
-            response.put("displayName", player.getDisplayName() != null ? 
+            Map<String, Object> userInfo = new HashMap<>();
+            userInfo.put("id", player.getId());
+            userInfo.put("username", player.getUsername());
+            userInfo.put("displayName", player.getDisplayName() != null ? 
                 player.getDisplayName() : player.getUsername());
-            response.put("email", player.getEmail() != null ? player.getEmail() : "");
-            response.put("level", player.getLevel());
+            userInfo.put("email", player.getEmail() != null ? player.getEmail() : "");
+            userInfo.put("level", player.getLevel());
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(userInfo);
 
         } catch (Exception e) {
             System.err.println("Error in getCurrentUser: " + e.getMessage());
@@ -169,16 +206,50 @@ public class AuthController {
      * Logout - invalidate session
      */
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(HttpServletRequest request) {
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
         try {
             HttpSession session = request.getSession(false);
             if (session != null) {
+                Integer userId = (Integer) session.getAttribute("userId");
+                if (userId != null) {
+                    rememberMeManagerService.clearTokens(userId);
+                }
                 session.invalidate();
             }
+            clearRememberMeCookie(response);
             return ResponseEntity.ok(Map.of("success", true, "message", "Logged out successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("Logout failed: " + e.getMessage());
         }
+    }
+
+    private void addRememberMeCookie(HttpServletResponse response, String rawToken) {
+        Cookie cookie = new Cookie(COOKIE_NAME, rawToken);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(COOKIE_MAX_AGE);
+        response.addCookie(cookie);
+    }
+
+    private void clearRememberMeCookie(HttpServletResponse response) {
+        Cookie cookie = new Cookie(COOKIE_NAME, "");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
+    }
+
+    private String getCookieValue(HttpServletRequest request, String name) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie c : cookies) {
+            if (name.equals(c.getName())) {
+                return c.getValue();
+            }
+        }
+        return null;
     }
 }

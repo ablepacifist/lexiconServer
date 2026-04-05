@@ -1,6 +1,5 @@
 package lexicon.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.*;
@@ -9,9 +8,6 @@ import java.util.concurrent.*;
 
 @Service
 public class YtDlpService {
-    
-    @Value("${ytdlp.cookies.path:}")
-    private String cookiesPath;
     
     public enum DownloadType {
         AUDIO_ONLY,
@@ -74,15 +70,13 @@ public class YtDlpService {
         List<String> command = new ArrayList<>();
         command.add("yt-dlp");
         
-        // Use cookies if configured for authenticated YouTube access
-        if (cookiesPath != null && !cookiesPath.isEmpty()) {
+        // Use cookies file for YouTube authentication (Windows compatible)
+        String cookiesPath = System.getProperty("user.dir") + java.io.File.separator + "cookies.txt";
+        java.io.File cookiesFile = new java.io.File(cookiesPath);
+        if (cookiesFile.exists()) {
             command.add("--cookies");
             command.add(cookiesPath);
         }
-        
-        // Use extractor args for better YouTube compatibility
-        command.add("--extractor-args");
-        command.add("youtube:player_client=android");
         
         // Skip unavailable fragments (helps with live streams and problematic videos)
         command.add("--skip-unavailable-fragments");

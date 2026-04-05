@@ -51,6 +51,7 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/stream/**").permitAll()  // Allow access to streaming endpoints
                 .requestMatchers("/api/download-queue/**").permitAll()  // Allow async download queue
                 .requestMatchers("/api/messages/**").permitAll()  // Allow message endpoints (Mumble bridge)
+                .requestMatchers("/api/chat/**").permitAll()     // Allow chat file upload/serving (Mumble bridge)
                 .requestMatchers("/api/avatar/**").permitAll()   // Allow avatar proxy endpoints (Mumble bridge)
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()

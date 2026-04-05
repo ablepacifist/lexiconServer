@@ -1,11 +1,16 @@
 package lexicon.logic;
 
+import lexicon.data.IChatFileDatabase;
 import lexicon.data.IMessageDatabase;
+import lexicon.object.ChatFile;
 import lexicon.object.TextMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Implementation of MessageManagerService
@@ -14,16 +19,22 @@ import java.util.List;
 @Service
 public class MessageManager implements MessageManagerService {
 
+    private static final Set<String> ATTACHMENT_TYPES = Set.of("IMAGE", "GIF", "MIXED");
+
     private final IMessageDatabase messageDatabase;
+    private final IChatFileDatabase chatFileDatabase;
 
     @Autowired
-    public MessageManager(IMessageDatabase messageDatabase) {
+    public MessageManager(IMessageDatabase messageDatabase, IChatFileDatabase chatFileDatabase) {
         this.messageDatabase = messageDatabase;
+        this.chatFileDatabase = chatFileDatabase;
     }
 
     @Override
     public long addMessage(TextMessage message) {
-        if (message.getContent() == null || message.getContent().trim().isEmpty()) {
+        // IMAGE/GIF messages may have empty content (caption is optional)
+        boolean isAttachmentMessage = message.getMessageType() != null && ATTACHMENT_TYPES.contains(message.getMessageType());
+        if (!isAttachmentMessage && (message.getContent() == null || message.getContent().trim().isEmpty())) {
             throw new IllegalArgumentException("Message content cannot be empty");
         }
         if (message.getMessageType() == null || message.getMessageType().isEmpty()) {
@@ -34,7 +45,11 @@ public class MessageManager implements MessageManagerService {
 
     @Override
     public TextMessage getMessageById(long messageId) {
-        return messageDatabase.getMessage(messageId);
+        TextMessage message = messageDatabase.getMessage(messageId);
+        if (message != null) {
+            enrichWithAttachment(message);
+        }
+        return message;
     }
 
     @Override
@@ -42,7 +57,9 @@ public class MessageManager implements MessageManagerService {
         if (limit <= 0 || limit > 200) {
             limit = 50; // Default/max sensible limit
         }
-        return messageDatabase.getMessagesByChannel(channelId, limit, beforeTimestamp);
+        List<TextMessage> messages = messageDatabase.getMessagesByChannel(channelId, limit, beforeTimestamp);
+        messages.forEach(this::enrichWithAttachment);
+        return messages;
     }
 
     @Override
@@ -63,6 +80,31 @@ public class MessageManager implements MessageManagerService {
         if (searchTerm == null || searchTerm.trim().isEmpty()) {
             throw new IllegalArgumentException("Search term cannot be empty");
         }
-        return messageDatabase.searchMessages(searchTerm.trim(), channelId);
+        List<TextMessage> messages = messageDatabase.searchMessages(searchTerm.trim(), channelId);
+        messages.forEach(this::enrichWithAttachment);
+        return messages;
+    }
+
+    /**
+     * If a message has messageType IMAGE/GIF/MIXED and a mediaFileId, attach the chat file metadata.
+     */
+    private void enrichWithAttachment(TextMessage message) {
+        if (message.getMediaFileId() == null) return;
+        String type = message.getMessageType();
+        if (type == null || !ATTACHMENT_TYPES.contains(type)) return;
+
+        ChatFile chatFile = chatFileDatabase.getChatFile(message.getMediaFileId());
+        if (chatFile == null) return;
+
+        Map<String, Object> attachment = new HashMap<>();
+        attachment.put("id", chatFile.getId());
+        attachment.put("url", "/api/chat/files/" + chatFile.getId());
+        attachment.put("thumbnailUrl", "/api/chat/files/" + chatFile.getId() + "/thumb");
+        attachment.put("originalFilename", chatFile.getOriginalFilename());
+        attachment.put("mimeType", chatFile.getMimeType());
+        attachment.put("width", chatFile.getWidth());
+        attachment.put("height", chatFile.getHeight());
+        attachment.put("fileSize", chatFile.getFileSize());
+        message.setAttachment(attachment);
     }
 }
