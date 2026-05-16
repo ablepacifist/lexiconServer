@@ -80,9 +80,16 @@ public class PlayerManager implements PlayerManagerService {
             return null;
         }
         
-        // Verify password
-        if (passwordEncoder.matches(password, player.getPassword())) {
-            // Note: not updating last_login_date since Alchemy schema doesn't have that column
+        // Verify password (handle both BCrypt and legacy plain text)
+        String storedPassword = player.getPassword();
+        boolean passwordMatches;
+        if (storedPassword.startsWith("$2a$") || storedPassword.startsWith("$2b$")) {
+            passwordMatches = passwordEncoder.matches(password, storedPassword);
+        } else {
+            passwordMatches = password.equals(storedPassword);
+        }
+        
+        if (passwordMatches) {
             return player;
         }
         

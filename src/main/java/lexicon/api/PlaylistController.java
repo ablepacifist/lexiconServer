@@ -123,12 +123,18 @@ public class PlaylistController {
     }
     
     /**
-     * Get all public playlists
+     * Get all public playlists, optionally filtered by media type
      */
     @GetMapping("/public")
-    public ResponseEntity<?> getPublicPlaylists() {
+    public ResponseEntity<?> getPublicPlaylists(
+            @RequestParam(value = "mediaType", required = false) String mediaType) {
         try {
             List<Playlist> playlists = playlistManager.getPublicPlaylists();
+            if (mediaType != null && !mediaType.isEmpty()) {
+                playlists = playlists.stream()
+                    .filter(p -> p.getMediaType() != null && mediaType.equalsIgnoreCase(p.getMediaType().name()))
+                    .collect(java.util.stream.Collectors.toList());
+            }
             return ResponseEntity.ok(playlists);
         } catch (Exception e) {
             System.err.println("Error fetching public playlists: " + e.getMessage());

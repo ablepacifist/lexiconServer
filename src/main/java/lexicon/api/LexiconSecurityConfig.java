@@ -50,6 +50,9 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/livestream/**").permitAll()  // Allow access to live stream endpoints
                 .requestMatchers("/api/stream/**").permitAll()  // Allow access to streaming endpoints
                 .requestMatchers("/api/download-queue/**").permitAll()  // Allow async download queue
+                .requestMatchers("/api/messages/**").permitAll()  // Allow message endpoints (Mumble bridge)
+                .requestMatchers("/api/chat/**").permitAll()     // Allow chat file upload/serving (Mumble bridge)
+                .requestMatchers("/api/avatar/**").permitAll()   // Allow avatar proxy endpoints (Mumble bridge)
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
@@ -79,23 +82,38 @@ public class LexiconSecurityConfig {
         }
         
         // Use origin patterns for wildcards support
+        // Spring's setAllowedOriginPatterns uses * as wildcard (NOT regex)
+        // Spring internally wraps patterns in \Q...\E and only expands * to .*
         List<String> originPatterns = new ArrayList<>();
         List<String> exactOrigins = new ArrayList<>();
         
         for (String origin : origins) {
             if (origin.contains("*")) {
-                // Convert wildcard to regex pattern for setAllowedOriginPatterns
-                originPatterns.add(origin.replace("*", ".*"));
+                // Already has wildcard - use as pattern directly (don't convert to regex)
+                originPatterns.add(origin);
             } else {
                 exactOrigins.add(origin);
             }
         }
         
-        // Add common playit patterns
-        originPatterns.add("http://147\\.185\\.221\\.24:.*");
-        originPatterns.add("https://147\\.185\\.221\\.24:.*");
-        originPatterns.add("http://.*\\.playit\\.pub:.*");
-        originPatterns.add("https://.*\\.playit\\.pub:.*");
+        // Add common playit patterns (use * wildcard, NOT regex .*)
+        originPatterns.add("http://147.185.221.24:*");
+        originPatterns.add("https://147.185.221.24:*");
+        originPatterns.add("http://209.25.140.16:*");
+        originPatterns.add("https://209.25.140.16:*");
+        originPatterns.add("http://*.playit.pub:*");
+        originPatterns.add("https://*.playit.pub:*");
+        originPatterns.add("http://*.with.playit.plus:*");
+        originPatterns.add("https://*.with.playit.plus:*");
+        
+        // Add custom domain patterns (Cloudflare tunnel)
+        originPatterns.add("https://alex-dyakin.com");
+        originPatterns.add("https://*.alex-dyakin.com");
+        
+        // Mumble Bridge origins
+        originPatterns.add("http://localhost:3080");
+        originPatterns.add("https://voice.alex-dyakin.com");
+        originPatterns.add("https://mumble.alex-dyakin.com");
         
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");

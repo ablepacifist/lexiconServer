@@ -3,13 +3,16 @@ package lexicon.api;
 import lexicon.logic.MediaManagerService;
 import lexicon.object.MediaFile;
 import lexicon.object.StreamResult;
+import lexicon.service.OptimizedFileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +28,9 @@ public class MediaController {
 
     @Autowired
     private MediaManagerService mediaManager;
+
+    @Autowired
+    private OptimizedFileStorageService fileStorageService;
 
     /**
      * Upload a media file
@@ -279,35 +285,59 @@ public class MediaController {
     /**
      * Stream video/audio with range request support for smooth playback
      * GET /api/media/stream/{id}
+     *
+     * No Range header: HTTP 200 + stream full file via InputStreamResource.
+     * With Range header: HTTP 206 + 2MB byte[] chunks.
      */
     @GetMapping("/stream/{id}")
-    public ResponseEntity<byte[]> streamFile(
+    public ResponseEntity<?> streamFile(
             @PathVariable int id,
             @RequestHeader(value = "Range", required = false) String rangeHeader) {
         try {
+            // No Range header — return HTTP 200 with full file streamed.
+            // Mobile browsers REJECT 206 when they didn't send a Range header.
+            if (rangeHeader == null || rangeHeader.isEmpty()) {
+                MediaFile mediaFile = mediaManager.getMediaFileById(id);
+                if (mediaFile == null) {
+                    return ResponseEntity.notFound().build();
+                }
+                String filePath = mediaFile.getFilePath();
+                if (filePath != null && !filePath.isEmpty()) {
+                    long fileSize = fileStorageService.getFileSize(filePath);
+                    InputStream inputStream = fileStorageService.getFileInputStream(filePath);
+                    InputStreamResource resource = new InputStreamResource(inputStream);
+                    String contentType = mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream";
+                    return ResponseEntity.ok()
+                            .contentType(MediaType.parseMediaType(contentType))
+                            .header("Accept-Ranges", "bytes")
+                            .header("Content-Length", String.valueOf(fileSize))
+                            .body(resource);
+                }
+                // DB-stored file fallback
+                StreamResult result = mediaManager.getStreamData(id, null);
+                if (result == null) return ResponseEntity.notFound().build();
+                return ResponseEntity.ok()
+                        .contentType(MediaType.parseMediaType(result.getContentType()))
+                        .header("Accept-Ranges", "bytes")
+                        .header("Content-Length", String.valueOf(result.getTotalSize()))
+                        .body(result.getData());
+            }
+
+            // Range header present — chunked 206 response
             StreamResult result = mediaManager.getStreamData(id, rangeHeader);
-            
             if (result == null) {
                 return ResponseEntity.notFound().build();
             }
-            
-            // Check for invalid range (indicated by negative start)
             if (result.getStart() < 0) {
                 return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                         .header("Content-Range", "bytes */" + result.getTotalSize())
                         .build();
             }
-            
-            // Build response with appropriate status code
-            HttpStatus status = result.isPartialContent() ? HttpStatus.PARTIAL_CONTENT : HttpStatus.OK;
-            
-            return ResponseEntity.status(status)
+            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                     .contentType(MediaType.parseMediaType(result.getContentType()))
                     .header("Accept-Ranges", "bytes")
                     .header("Content-Range", "bytes " + result.getStart() + "-" + result.getEnd() + "/" + result.getTotalSize())
                     .header("Content-Length", String.valueOf(result.getContentLength()))
-                    .header("Cache-Control", "no-cache, no-store, must-revalidate")
-                    .header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Content-Type")
                     .body(result.getData());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

@@ -6,89 +6,30 @@ import java.util.List;
 
 /**
  * Interface for live stream database operations
+ * All methods that deal with stream state or queue take a channel parameter ("music" or "video")
  */
 public interface ILiveStreamDatabase {
     
     // Stream State Management
-    /**
-     * Get the current stream state (singleton)
-     */
-    LiveStreamState getStreamState();
+    LiveStreamState getStreamState(String channel);
+    void initializeStreamState(String channel);
+    void setCurrentMedia(String channel, int mediaId, long positionMs);
     
-    /**
-     * Initialize stream state if it doesn't exist
-     */
-    void initializeStreamState();
-    
-    /**
-     * Update the current playing media
-     */
-    void setCurrentMedia(int mediaId, long positionMs);
-    
-    /**
-     * Clear all skip votes for current media
-     */
-    void clearSkipVotes();
-    
-    // Queue Management - Fast Methods
-    /**
-     * Get next queue ID
-     */
+    // Queue Management
     int getNextQueueId();
-    
-    /**
-     * Add item to queue
-     */
-    int addToQueue(int mediaFileId, int userId);
-    
-    /**
-     * Remove item from queue
-     */
-    boolean removeFromQueue(int queueId);
-    
-    /**
-     * Update queue item status
-     */
+    int addToQueue(String channel, int mediaFileId, int userId);
+    boolean removeFromQueue(String channel, int queueId);
     void updateQueueStatus(int queueId, LiveStreamQueue.QueueStatus status);
-    
-    /**
-     * Reorder queue positions after removal
-     */
-    void reorderQueue();
+    void reorderQueue(String channel);
     
     // Skip Vote Management
-    /**
-     * Add skip vote for current media
-     */
     boolean addSkipVote(int queueId, int userId);
-    
-    /**
-     * Get skip votes for a queue item
-     */
     List<Integer> getSkipVotes(int queueId);
-    
-    /**
-     * Get count of skip votes for a queue item
-     */
     int getSkipVoteCount(int queueId);
-    
-    /**
-     * Clear skip votes for a queue item
-     */
     void clearSkipVotesForItem(int queueId);
-    
-    /**
-     * Check if user has already voted to skip
-     */
     boolean hasUserVotedSkip(int queueId, int userId);
     
-    /**
-     * Get the currently playing queue item ID (fast - no joins)
-     */
-    Integer getCurrentPlayingQueueId();
-    
-    /**
-     * Get queue items without loading full media files (fast)
-     */
-    List<LiveStreamQueue> getQueueItemsLightweight();
+    // Channel-aware queries
+    Integer getCurrentPlayingQueueId(String channel);
+    List<LiveStreamQueue> getQueueItemsLightweight(String channel);
 }

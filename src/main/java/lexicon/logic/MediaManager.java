@@ -149,9 +149,9 @@ public class MediaManager implements MediaManagerService {
         
         try {
             File downloadedFile = result.getFile();
-            byte[] fileData = Files.readAllBytes(downloadedFile.toPath());
             
             int id = mediaDatabase.getNextMediaFileId();
+            MediaType type = MediaType.fromString(mediaType);
             
             // Create MediaFile object
             MediaFile mediaFile = new MediaFile(
@@ -160,7 +160,7 @@ public class MediaManager implements MediaManagerService {
                 downloadedFile.getName(), // originalFilename
                 result.getContentType(),
                 downloadedFile.length(),
-                "", // filePath
+                "", // Will be set by storage service
                 userId,
                 title.trim(),
                 description != null ? description.trim() : "",
@@ -168,14 +168,29 @@ public class MediaManager implements MediaManagerService {
             );
             
             mediaFile.setUploadDate(LocalDateTime.now());
-            mediaFile.setMediaType(MediaType.fromString(mediaType));
+            mediaFile.setMediaType(type);
             mediaFile.setSourceUrl(url); // Save the source URL
+            
+            // Store file on filesystem using OptimizedFileStorageService
+            String storedFilePath = null;
+            if (fileStorageService != null) {
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(downloadedFile)) {
+                    storedFilePath = fileStorageService.storeFileFromStream(
+                        fis, downloadedFile.getName(), downloadedFile.length(), type);
+                    if (storedFilePath != null) {
+                        mediaFile.setFilePath(storedFilePath);
+                    }
+                }
+            }
             
             // Save metadata to database
             mediaDatabase.addMediaFile(mediaFile);
             
-            // Store the actual file data
-            mediaDatabase.storeFileData(id, fileData);
+            // Fallback to database storage if file storage failed
+            if (storedFilePath == null) {
+                byte[] fileData = Files.readAllBytes(downloadedFile.toPath());
+                mediaDatabase.storeFileData(id, fileData);
+            }
             
             // Clean up temporary file
             if (!downloadedFile.delete()) {
@@ -305,6 +320,22 @@ public class MediaManager implements MediaManagerService {
     
     @Override
     public byte[] getFileData(int mediaFileId) {
+        // Check if file is stored on the file system first
+        MediaFile mediaFile = mediaDatabase.getMediaFile(mediaFileId);
+        if (mediaFile != null) {
+            String filePath = mediaFile.getFilePath();
+            if (filePath != null && !filePath.isEmpty()) {
+                try {
+                    try (InputStream is = fileStorageService.getFileInputStream(filePath)) {
+                        return is.readAllBytes();
+                    }
+                } catch (IOException e) {
+                    System.err.println("Failed to read file from filesystem (" + filePath + "): " + e.getMessage());
+                    // Fall through to database lookup
+                }
+            }
+        }
+        // Fall back to database storage
         return mediaDatabase.getFileData(mediaFileId);
     }
     

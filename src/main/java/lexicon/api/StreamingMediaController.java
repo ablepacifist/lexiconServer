@@ -197,7 +197,7 @@ public class StreamingMediaController {
         try {
             // Use existing media streaming endpoint
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header("Location", "/api/media/" + mediaFileId + "/stream")
+                .header("Location", "/api/media/stream/" + mediaFileId)
                 .build();
                 
         } catch (Exception e) {

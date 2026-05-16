@@ -18,6 +18,7 @@ public class Playlist {
     private MediaType mediaType; // MUSIC, VIDEO, AUDIOBOOK
     private List<PlaylistItem> items;
     private List<Integer> mediaFileIds; // Transient field for bulk creation
+    private int itemCount; // Number of items (set by list queries)
     
     public Playlist() {
         this.items = new ArrayList<>();
@@ -64,6 +65,9 @@ public class Playlist {
     
     public List<Integer> getMediaFileIds() { return mediaFileIds; }
     public void setMediaFileIds(List<Integer> mediaFileIds) { this.mediaFileIds = mediaFileIds; }
+    
+    public int getItemCount() { return itemCount; }
+    public void setItemCount(int itemCount) { this.itemCount = itemCount; }
     
     public void addItem(PlaylistItem item) {
         this.items.add(item);

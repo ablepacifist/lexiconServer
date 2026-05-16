@@ -1,6 +1,5 @@
 package lexicon.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.*;
@@ -9,9 +8,6 @@ import java.util.concurrent.*;
 
 @Service
 public class YtDlpService {
-    
-    @Value("${ytdlp.cookies.path:}")
-    private String cookiesPath;
     
     public enum DownloadType {
         AUDIO_ONLY,
@@ -72,14 +68,16 @@ public class YtDlpService {
         String outputTemplate = new File(outputDir, filenameBase + ".%(ext)s").getAbsolutePath();
         
         List<String> command = new ArrayList<>();
-        // Use the latest yt-dlp from /usr/local/bin (updated version)
-        command.add("/usr/local/bin/yt-dlp");
+        command.add("yt-dlp");
         
-        // Don't use cookies - they cause issues from different networks
-        // Instead, use extractor args for better YouTube compatibility
-        command.add("--extractor-args");
-        command.add("youtube:player_client=android");
-        
+        // Use Firefox browser cookies for YouTube authentication
+        command.add("--cookies-from-browser");
+        command.add("firefox");
+
+        // Enable remote EJS challenge solver for YouTube's JS challenges
+        command.add("--remote-components");
+        command.add("ejs:github");
+
         // Skip unavailable fragments (helps with live streams and problematic videos)
         command.add("--skip-unavailable-fragments");
         
@@ -187,19 +185,11 @@ public class YtDlpService {
      */
     private boolean isYtDlpInstalled() {
         try {
-            // Use full path since Java process PATH may not include /usr/local/bin
-            Process process = new ProcessBuilder("/usr/local/bin/yt-dlp", "--version").start();
+            Process process = new ProcessBuilder("yt-dlp", "--version").start();
             process.waitFor(5, TimeUnit.SECONDS);
             return process.exitValue() == 0;
         } catch (Exception e) {
-            // Fall back to PATH lookup
-            try {
-                Process process = new ProcessBuilder("yt-dlp", "--version").start();
-                process.waitFor(5, TimeUnit.SECONDS);
-                return process.exitValue() == 0;
-            } catch (Exception e2) {
-                return false;
-            }
+            return false;
         }
     }
     

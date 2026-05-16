@@ -10,6 +10,7 @@ import java.util.List;
  */
 public class LiveStreamQueue {
     private int id;
+    private String channel; // "music" or "video"
     private int mediaFileId;
     private int addedBy; // User ID who added this
     private LocalDateTime addedAt;
@@ -46,6 +47,9 @@ public class LiveStreamQueue {
     // Getters and Setters
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
+    
+    public String getChannel() { return channel; }
+    public void setChannel(String channel) { this.channel = channel; }
     
     public int getMediaFileId() { return mediaFileId; }
     public void setMediaFileId(int mediaFileId) { this.mediaFileId = mediaFileId; }

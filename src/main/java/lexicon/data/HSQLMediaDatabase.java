@@ -4,6 +4,9 @@ import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.object.PlaybackPosition;
 import org.springframework.stereotype.Repository;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import jakarta.annotation.PreDestroy;
 
 import java.sql.*;
 import java.util.*;
@@ -16,11 +19,32 @@ import java.io.InputStream;
 @Repository
 public class HSQLMediaDatabase implements IMediaDatabase {
     
-    // Use same database as players (port 9002) but different tables
     private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final HikariDataSource dataSource;
+    
+    public HSQLMediaDatabase() {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(DATABASE_URL);
+        config.setUsername("SA");
+        config.setPassword("");
+        config.setMaximumPoolSize(15);
+        config.setMinimumIdle(3);
+        config.setConnectionTimeout(5000);
+        config.setIdleTimeout(60000);
+        config.setMaxLifetime(300000);
+        config.setPoolName("media-db");
+        this.dataSource = new HikariDataSource(config);
+    }
+    
+    @PreDestroy
+    public void cleanup() {
+        if (dataSource != null && !dataSource.isClosed()) {
+            dataSource.close();
+        }
+    }
     
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(DATABASE_URL, "SA", "");
+        return dataSource.getConnection();
     }
     
     @Override
