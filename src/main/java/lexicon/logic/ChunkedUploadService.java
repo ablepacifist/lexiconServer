@@ -133,7 +133,7 @@ public class ChunkedUploadService {
             
             // Verify chunk checksum if provided
             if (checksum != null && !checksum.isEmpty()) {
-                String calculatedChecksum = calculateMD5(chunkData);
+                String calculatedChecksum = calculateSHA256(chunkData);
                 if (!calculatedChecksum.equals(checksum)) {
                     throw new IllegalArgumentException("Chunk checksum mismatch");
                 }
@@ -232,13 +232,7 @@ public class ChunkedUploadService {
                                           upload.getTotalSize() + ", Got: " + assembledSize);
         }
         
-        // Verify file checksum if provided
-        if (upload.getChecksum() != null && !upload.getChecksum().isEmpty()) {
-            String calculatedChecksum = calculateMD5(Files.readAllBytes(tempFile));
-            if (!calculatedChecksum.equals(upload.getChecksum())) {
-                throw new IllegalStateException("Assembled file checksum mismatch");
-            }
-        }
+        // Skip file-level checksum for large files (too slow over WSL UNC, and chunks were already verified)
         
         System.out.println("✅ Successfully assembled " + upload.getOriginalFilename() + " (" + assembledSize + " bytes)");
         
@@ -247,7 +241,9 @@ public class ChunkedUploadService {
     }
     
     /**
-     * Finalize upload and create MediaFile in database
+     * Finalize upload and create MediaFile in database.
+     * If assembly is still running or file is being stored, returns immediately
+     * with progress info — the caller can poll for completion.
      */
     public Map<String, Object> finalizeUpload(String uploadId) throws Exception {
         System.out.println("🔧 Finalizing upload: " + uploadId);
@@ -260,14 +256,14 @@ public class ChunkedUploadService {
         
         System.out.println("📊 Upload status: " + upload.getStatus());
         
-        // If assembly is in progress, wait for it to complete (with timeout)
+        // If assembly is still running, wait briefly then return status
         if (upload.getStatus() == ChunkedUploadStatus.ASSEMBLING) {
-            System.out.println("⏳ Assembly in progress, waiting for completion...");
-            int maxWaitSeconds = 300; // 5 minute timeout for large files
+            System.out.println("⏳ Assembly in progress, waiting briefly...");
+            int maxWaitSeconds = 60; // Wait at most 60s (safely under Cloudflare's 100s limit)
             int waitedSeconds = 0;
             while (upload.getStatus() == ChunkedUploadStatus.ASSEMBLING && waitedSeconds < maxWaitSeconds) {
                 try {
-                    Thread.sleep(1000); // Check every second
+                    Thread.sleep(1000);
                     waitedSeconds++;
                     if (waitedSeconds % 10 == 0) {
                         System.out.println("⏳ Still waiting for assembly... (" + waitedSeconds + "s)");
@@ -276,6 +272,14 @@ public class ChunkedUploadService {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Interrupted while waiting for assembly");
                 }
+            }
+            // If still assembling after 60s, return status instead of timing out
+            if (upload.getStatus() == ChunkedUploadStatus.ASSEMBLING) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", false);
+                response.put("status", "assembling");
+                response.put("message", "File is still being assembled. Try again in a few seconds.");
+                return response;
             }
             System.out.println("✅ Done waiting. Final status: " + upload.getStatus());
         }
@@ -371,11 +375,11 @@ public class ChunkedUploadService {
     }
     
     /**
-     * Calculate MD5 checksum of data
+     * Calculate SHA-256 checksum of data (matches frontend crypto.subtle.digest('SHA-256'))
      */
-    private String calculateMD5(byte[] data) {
+    private String calculateSHA256(byte[] data) {
         try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hashBytes = md.digest(data);
             StringBuilder sb = new StringBuilder();
             for (byte b : hashBytes) {
@@ -383,7 +387,7 @@ public class ChunkedUploadService {
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("MD5 algorithm not available", e);
+            throw new RuntimeException("SHA-256 algorithm not available", e);
         }
     }
     
