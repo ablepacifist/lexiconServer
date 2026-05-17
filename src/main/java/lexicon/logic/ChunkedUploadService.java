@@ -22,10 +22,15 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.springframework.scheduling.annotation.Scheduled;
 
 /**
  * Service for handling chunked file uploads
@@ -63,6 +68,51 @@ public class ChunkedUploadService {
             Files.createDirectories(Paths.get(storageProperties.getCachePath()));
         } catch (IOException e) {
             throw new RuntimeException("Failed to create temporary directories: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Scheduled cleanup: delete temp chunk dirs and assembled files older than 24 hours.
+     * Catches uploads that were orphaned by server restarts or finalization failures.
+     * Runs every hour.
+     */
+    @Scheduled(fixedRate = 3_600_000)
+    public void cleanupOrphanedTempFiles() {
+        Path chunksRoot = Paths.get(storageProperties.getTempChunksPath());
+        if (!Files.exists(chunksRoot)) return;
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        try (Stream<Path> entries = Files.list(chunksRoot)) {
+            List<Path> stale = entries.filter(p -> {
+                try {
+                    LocalDateTime modified = LocalDateTime.ofInstant(
+                        Files.getLastModifiedTime(p).toInstant(),
+                        java.time.ZoneId.systemDefault());
+                    return modified.isBefore(cutoff);
+                } catch (IOException e) {
+                    return false;
+                }
+            }).collect(Collectors.toList());
+
+            for (Path staleEntry : stale) {
+                try {
+                    if (Files.isDirectory(staleEntry)) {
+                        Files.walk(staleEntry)
+                             .sorted(Comparator.reverseOrder())
+                             .map(Path::toFile)
+                             .forEach(java.io.File::delete);
+                    } else {
+                        Files.deleteIfExists(staleEntry);
+                    }
+                    System.out.println("🧹 Cleaned up stale temp entry: " + staleEntry.getFileName());
+                } catch (IOException e) {
+                    System.err.println("⚠️ Could not delete stale temp entry " + staleEntry + ": " + e.getMessage());
+                }
+            }
+            if (!stale.isEmpty()) {
+                System.out.println("🧹 Orphaned temp cleanup removed " + stale.size() + " entries.");
+            }
+        } catch (IOException e) {
+            System.err.println("⚠️ Orphaned temp cleanup failed: " + e.getMessage());
         }
     }
     
