@@ -17,6 +17,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * REST Controller for Media file management in the Lexicon server
  * Handles file uploads, downloads, and media file operations
@@ -25,6 +28,8 @@ import java.util.Map;
 @RequestMapping("/api/media")
 @CrossOrigin(origins = "*")
 public class MediaController {
+
+    private static final Logger log = LoggerFactory.getLogger(MediaController.class);
 
     @Autowired
     private MediaManagerService mediaManager;
@@ -294,19 +299,26 @@ public class MediaController {
             @PathVariable int id,
             @RequestHeader(value = "Range", required = false) String rangeHeader) {
         try {
+            log.info("STREAM id={} Range={}", id, rangeHeader);
             // No Range header — return HTTP 200 with full file streamed.
             // Mobile browsers REJECT 206 when they didn't send a Range header.
             if (rangeHeader == null || rangeHeader.isEmpty()) {
                 MediaFile mediaFile = mediaManager.getMediaFileById(id);
                 if (mediaFile == null) {
+                    log.warn("STREAM id={} — NOT FOUND", id);
                     return ResponseEntity.notFound().build();
                 }
                 String filePath = mediaFile.getFilePath();
                 if (filePath != null && !filePath.isEmpty()) {
                     long fileSize = fileStorageService.getFileSize(filePath);
                     InputStream inputStream = fileStorageService.getFileInputStream(filePath);
+                    if (inputStream == null) {
+                        log.error("STREAM id={} — InputStream NULL for path: {}", id, filePath);
+                        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+                    }
                     InputStreamResource resource = new InputStreamResource(inputStream);
                     String contentType = mediaFile.getContentType() != null ? mediaFile.getContentType() : "application/octet-stream";
+                    log.info("STREAM id={} — 200 OK | type={} size={} path={}", id, contentType, fileSize, filePath);
                     return ResponseEntity.ok()
                             .contentType(MediaType.parseMediaType(contentType))
                             .header("Accept-Ranges", "bytes")
@@ -315,7 +327,11 @@ public class MediaController {
                 }
                 // DB-stored file fallback
                 StreamResult result = mediaManager.getStreamData(id, null);
-                if (result == null) return ResponseEntity.notFound().build();
+                if (result == null) {
+                    log.warn("STREAM id={} — DB fallback returned null", id);
+                    return ResponseEntity.notFound().build();
+                }
+                log.info("STREAM id={} — 200 OK (DB) | type={} size={}", id, result.getContentType(), result.getTotalSize());
                 return ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(result.getContentType()))
                         .header("Accept-Ranges", "bytes")
@@ -326,13 +342,16 @@ public class MediaController {
             // Range header present — chunked 206 response
             StreamResult result = mediaManager.getStreamData(id, rangeHeader);
             if (result == null) {
+                log.warn("STREAM id={} Range={} — getStreamData returned null", id, rangeHeader);
                 return ResponseEntity.notFound().build();
             }
             if (result.getStart() < 0) {
+                log.warn("STREAM id={} — Range not satisfiable (total={})", id, result.getTotalSize());
                 return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                         .header("Content-Range", "bytes */" + result.getTotalSize())
                         .build();
             }
+            log.info("STREAM id={} — 206 | bytes {}-{}/{}", id, result.getStart(), result.getEnd(), result.getTotalSize());
             return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
                     .contentType(MediaType.parseMediaType(result.getContentType()))
                     .header("Accept-Ranges", "bytes")
@@ -340,6 +359,7 @@ public class MediaController {
                     .header("Content-Length", String.valueOf(result.getContentLength()))
                     .body(result.getData());
         } catch (Exception e) {
+            log.error("STREAM id={} — EXCEPTION: {}", id, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

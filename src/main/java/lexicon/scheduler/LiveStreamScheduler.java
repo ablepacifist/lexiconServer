@@ -43,6 +43,19 @@ public class LiveStreamScheduler {
     }
     
     /**
+     * Send heartbeat to all SSE connections every 30 seconds.
+     * Prevents Cloudflare (100s idle timeout) and proxies from dropping the connection.
+     */
+    @Scheduled(fixedRate = 30000)
+    public void sendHeartbeat() {
+        try {
+            liveStreamService.sendHeartbeatToAll();
+        } catch (Exception e) {
+            logger.debug("Heartbeat error: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Broadcast periodic state updates to keep clients in sync.
      * Only broadcasts if state has actually changed since last broadcast.
      */
