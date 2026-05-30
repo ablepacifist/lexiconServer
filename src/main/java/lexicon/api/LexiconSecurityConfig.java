@@ -41,6 +41,7 @@ public class LexiconSecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/logout", "/api/auth/me").permitAll()
+                .requestMatchers("/api/auth/sso/**").permitAll()
                 .requestMatchers("/api/health", "/api/info").permitAll()
                 .requestMatchers("/api/test/**").permitAll()  // Allow access to test endpoints
                 .requestMatchers("/api/players/**").permitAll()  // Allow access to player endpoints for testing
