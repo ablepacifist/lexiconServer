@@ -395,6 +395,31 @@ public class LiveStreamService {
             emitters.remove(emitter);
         }
     }
+
+    /**
+     * Send a lightweight heartbeat comment to all SSE connections across all channels.
+     * This prevents Cloudflare and other proxies from dropping idle connections.
+     */
+    public void sendHeartbeatToAll() {
+        for (Map.Entry<String, CopyOnWriteArrayList<SseEmitter>> entry : channelEmitters.entrySet()) {
+            CopyOnWriteArrayList<SseEmitter> emitters = entry.getValue();
+            if (emitters == null || emitters.isEmpty()) continue;
+
+            List<SseEmitter> deadEmitters = new ArrayList<>();
+            for (SseEmitter emitter : emitters) {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("heartbeat")
+                            .data("ping"));
+                } catch (Exception e) {
+                    deadEmitters.add(emitter);
+                }
+            }
+            if (!deadEmitters.isEmpty()) {
+                emitters.removeAll(deadEmitters);
+            }
+        }
+    }
     
     private void sendUpdateToClients(String channel, String eventType, Object data) {
         CopyOnWriteArrayList<SseEmitter> emitters = channelEmitters.get(channel);

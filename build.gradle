@@ -23,6 +23,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.security:spring-security-crypto'
 
+    // Web Push notifications (VAPID + encryption via BouncyCastle)
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
+
     // Include any legacy jars you might have in the lib folder (if needed)
     implementation fileTree(dir: 'lib', include: ['*.jar'])
     

@@ -525,6 +525,9 @@ public class MediaManager implements MediaManagerService {
             long maxChunkSize = 2 * 1024 * 1024;
             if (end - start + 1 > maxChunkSize) {
                 end = start + maxChunkSize - 1;
+                // Must flag as partial even if client didn't send Range header,
+                // otherwise controller returns HTTP 200 with truncated body
+                isPartialContent = true;
             }
             
             // Read the file chunk
@@ -532,9 +535,11 @@ public class MediaManager implements MediaManagerService {
             byte[] rangeData = new byte[(int) contentLength];
             
             try (InputStream inputStream = fileStorageService.getFileInputStream(filePath)) {
-                inputStream.skip(start);
-                int bytesRead = inputStream.read(rangeData);
-                System.out.println("Read " + bytesRead + " bytes from filesystem");
+                // skipNBytes guarantees all bytes are skipped (unlike skip() which can return early)
+                inputStream.skipNBytes(start);
+                // readNBytes guarantees all requested bytes are read (unlike read() which can short-read)
+                int bytesRead = inputStream.readNBytes(rangeData, 0, (int) contentLength);
+                System.out.println("Read " + bytesRead + " bytes from filesystem (requested " + contentLength + ")");
             }
             
             return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());

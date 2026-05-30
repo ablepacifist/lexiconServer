@@ -53,6 +53,7 @@ public class LexiconSecurityConfig {
                 .requestMatchers("/api/messages/**").permitAll()  // Allow message endpoints (Mumble bridge)
                 .requestMatchers("/api/chat/**").permitAll()     // Allow chat file upload/serving (Mumble bridge)
                 .requestMatchers("/api/avatar/**").permitAll()   // Allow avatar proxy endpoints (Mumble bridge)
+                .requestMatchers("/api/push/**").permitAll()     // Allow push notification endpoints
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )
