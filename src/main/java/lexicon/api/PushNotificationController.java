@@ -39,14 +39,20 @@ public class PushNotificationController {
      */
     @PostMapping("/subscribe")
     public ResponseEntity<Map<String, Object>> subscribe(@RequestBody Map<String, Object> body) {
-        Integer userId = (Integer) body.get("userId");
+        Object userIdObj = body.get("userId");
+        int userId;
+        try {
+            userId = (userIdObj instanceof Number) ? ((Number) userIdObj).intValue() : Integer.parseInt(userIdObj.toString());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid userId"));
+        }
         String endpoint = (String) body.get("endpoint");
 
         @SuppressWarnings("unchecked")
         Map<String, String> keys = (Map<String, String>) body.get("keys");
         String userAgent = (String) body.get("userAgent");
 
-        if (userId == null || endpoint == null || keys == null) {
+        if (endpoint == null || keys == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields: userId, endpoint, keys"));
         }
 
@@ -85,11 +91,20 @@ public class PushNotificationController {
      */
     @PostMapping("/send")
     public ResponseEntity<Map<String, Object>> sendNotification(@RequestBody Map<String, Object> body) {
-        Integer userId = (Integer) body.get("userId");
+        Object userIdObj = body.get("userId");
+        if (userIdObj == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields: userId, title"));
+        }
+        int userId;
+        try {
+            userId = (userIdObj instanceof Number) ? ((Number) userIdObj).intValue() : Integer.parseInt(userIdObj.toString());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid userId"));
+        }
         String title = (String) body.get("title");
         String notifBody = (String) body.get("body");
 
-        if (userId == null || title == null) {
+        if (title == null) {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields: userId, title"));
         }
 
@@ -108,7 +123,10 @@ public class PushNotificationController {
     @PostMapping("/send-bulk")
     public ResponseEntity<Map<String, Object>> sendBulk(@RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
-        List<Integer> userIds = (List<Integer>) body.get("userIds");
+        List<?> rawIds = (List<?>) body.get("userIds");
+        List<Integer> userIds = (rawIds != null) ? rawIds.stream()
+                .map(id -> (id instanceof Number) ? ((Number) id).intValue() : Integer.parseInt(id.toString()))
+                .collect(java.util.stream.Collectors.toList()) : null;
         String title = (String) body.get("title");
         String notifBody = (String) body.get("body");
 
