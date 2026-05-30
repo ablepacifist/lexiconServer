@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 @Repository
 public class HSQLChatFileDatabase implements IChatFileDatabase {
 
-    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final String DATABASE_URL =
+            System.getProperty("database.url",
+                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DATABASE_URL, "SA", "");

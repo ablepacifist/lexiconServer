@@ -18,7 +18,9 @@ import java.util.List;
 @Repository
 public class HSQLPlaylistDatabase implements IPlaylistDatabase {
     
-    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final String DATABASE_URL =
+            System.getProperty("database.url",
+                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
     private final HikariDataSource dataSource;
     
     @Autowired

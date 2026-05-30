@@ -20,7 +20,9 @@ import java.util.stream.Collectors;
 @Component
 public class DatabaseInitializer {
     
-    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final String DATABASE_URL =
+            System.getProperty("database.url",
+                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
     
     @PostConstruct
     public void initializeSchema() {

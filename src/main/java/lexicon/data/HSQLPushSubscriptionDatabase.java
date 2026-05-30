@@ -13,7 +13,9 @@ import java.util.List;
 @Repository
 public class HSQLPushSubscriptionDatabase implements IPushSubscriptionDatabase {
 
-    private final String DATABASE_URL = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+    private final String DATABASE_URL =
+            System.getProperty("database.url",
+                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
     private final HikariDataSource dataSource;
 
     public HSQLPushSubscriptionDatabase() {
