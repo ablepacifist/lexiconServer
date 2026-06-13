@@ -3,15 +3,21 @@ package lexicon.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Service for importing playlists from YouTube using yt-dlp
  */
 @Service
 public class YoutubeImportService {
+
+    @Value("${ytdlp.cookies.path:cookies.txt}")
+    private String cookiesPath;
     
     private static final String MEDIA_UPLOAD_URL = "http://localhost:36568/api/media/upload-from-url";
     
@@ -20,14 +26,22 @@ public class YoutubeImportService {
      * @return JsonNode containing playlist entries
      */
     public PlaylistMetadata fetchPlaylistMetadata(String playlistUrl) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            "yt-dlp",
-            "--cookies-from-browser", "firefox",
-            "--remote-components", "ejs:github",
-            "--dump-json",
-            "--flat-playlist",
-            playlistUrl
-        );
+        List<String> cmd = new ArrayList<>();
+        cmd.add("yt-dlp");
+        java.io.File cookiesFile = new java.io.File(cookiesPath);
+        if (cookiesFile.exists()) {
+            cmd.add("--cookies");
+            cmd.add(cookiesFile.getAbsolutePath());
+        } else {
+            cmd.add("--cookies-from-browser");
+            cmd.add("firefox");
+        }
+        cmd.add("--extractor-args");
+        cmd.add("youtube:player_client=android,web");
+        cmd.add("--dump-json");
+        cmd.add("--flat-playlist");
+        cmd.add(playlistUrl);
+        ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process process = pb.start();
         
