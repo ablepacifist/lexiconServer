@@ -13,7 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Enhanced file storage service using optimized file system storage
@@ -278,6 +278,29 @@ public class OptimizedFileStorageService {
         }
     }
     
+    public Map<String, Object> getStorageInfo() throws IOException {
+        LinkedHashSet<FileStore> seen = new LinkedHashSet<>();
+        seen.add(Files.getFileStore(Paths.get(storageProperties.getBasePath())));
+        for (String extra : storageProperties.getAdditionalPaths()) {
+            seen.add(Files.getFileStore(Paths.get(extra)));
+        }
+
+        List<Map<String, Object>> volumes = new ArrayList<>();
+        long totalBytes = 0, usedBytes = 0, freeBytes = 0;
+        int i = 1;
+        for (FileStore fs : seen) {
+            long t = fs.getTotalSpace();
+            long f = fs.getUsableSpace();
+            long u = t - f;
+            volumes.add(Map.of("label", "Media Drive " + i++, "totalBytes", t, "usedBytes", u, "freeBytes", f));
+            totalBytes += t;
+            usedBytes += u;
+            freeBytes += f;
+        }
+
+        return Map.of("volumes", volumes, "totalBytes", totalBytes, "usedBytes", usedBytes, "freeBytes", freeBytes);
+    }
+
     /**
      * Helper methods
      */

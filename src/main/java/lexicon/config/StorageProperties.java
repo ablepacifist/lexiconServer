@@ -3,6 +3,9 @@ package lexicon.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Storage configuration properties for file system storage
  */
@@ -16,7 +19,8 @@ public class StorageProperties {
     private String musicPath;
     private String videosPath;
     private String backupsPath;
-    
+    private List<String> additionalPaths = new ArrayList<>();
+
     // File size thresholds
     private long smallFileThreshold = 10 * 1024 * 1024;  // 10MB
     private long largeFileThreshold = 100 * 1024 * 1024; // 100MB
@@ -55,7 +59,10 @@ public class StorageProperties {
         return backupsPath != null ? backupsPath : basePath + "/backups"; 
     }
     public void setBackupsPath(String backupsPath) { this.backupsPath = backupsPath; }
-    
+
+    public List<String> getAdditionalPaths() { return additionalPaths; }
+    public void setAdditionalPaths(List<String> additionalPaths) { this.additionalPaths = additionalPaths; }
+
     public long getSmallFileThreshold() { return smallFileThreshold; }
     public void setSmallFileThreshold(long smallFileThreshold) { this.smallFileThreshold = smallFileThreshold; }
     
