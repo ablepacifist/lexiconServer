@@ -23,7 +23,10 @@ public class OptimizedFileStorageService {
     
     @Autowired
     private StorageProperties storageProperties;
-    
+
+    @Autowired
+    private WslDiskUsageService wslDiskUsageService;
+
     /**
      * Store a file using the optimized storage strategy
      */
@@ -279,23 +282,17 @@ public class OptimizedFileStorageService {
     }
     
     public Map<String, Object> getStorageInfo() throws IOException {
-        LinkedHashSet<FileStore> seen = new LinkedHashSet<>();
-        seen.add(Files.getFileStore(Paths.get(storageProperties.getBasePath())));
-        for (String extra : storageProperties.getAdditionalPaths()) {
-            seen.add(Files.getFileStore(Paths.get(extra)));
-        }
+        List<WslDiskUsageService.Volume> drives = wslDiskUsageService.listPhysicalDriveVolumes();
 
         List<Map<String, Object>> volumes = new ArrayList<>();
         long totalBytes = 0, usedBytes = 0, freeBytes = 0;
         int i = 1;
-        for (FileStore fs : seen) {
-            long t = fs.getTotalSpace();
-            long f = fs.getUsableSpace();
-            long u = t - f;
-            volumes.add(Map.of("label", "Media Drive " + i++, "totalBytes", t, "usedBytes", u, "freeBytes", f));
-            totalBytes += t;
-            usedBytes += u;
-            freeBytes += f;
+        for (WslDiskUsageService.Volume v : drives) {
+            volumes.add(Map.of("label", "Media Drive " + i++,
+                    "totalBytes", v.totalBytes, "usedBytes", v.usedBytes, "freeBytes", v.freeBytes));
+            totalBytes += v.totalBytes;
+            usedBytes += v.usedBytes;
+            freeBytes += v.freeBytes;
         }
 
         return Map.of("volumes", volumes, "totalBytes", totalBytes, "usedBytes", usedBytes, "freeBytes", freeBytes);
