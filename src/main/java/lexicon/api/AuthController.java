@@ -1,5 +1,6 @@
 package lexicon.api;
 
+import lexicon.logic.MobileTokenService;
 import lexicon.logic.PlayerManagerService;
 import lexicon.logic.RememberMeManagerService;
 import lexicon.object.Player;
@@ -33,6 +34,9 @@ public class AuthController {
     @Autowired
     private RememberMeManagerService rememberMeManagerService;
 
+    @Autowired
+    private MobileTokenService mobileTokenService;
+
     /**
      * Login endpoint - creates a session
      */
@@ -41,6 +45,7 @@ public class AuthController {
         String username = (String) payload.get("username");
         String password = (String) payload.get("password");
         boolean rememberMe = Boolean.TRUE.equals(payload.get("rememberMe"));
+        boolean isMobile = "mobile".equals(payload.get("platform"));
 
         if (username == null || password == null) {
             return ResponseEntity.badRequest().body("Username and password required");
@@ -76,6 +81,12 @@ public class AuthController {
             if (rememberMe) {
                 String rawToken = rememberMeManagerService.createToken(player.getId());
                 addRememberMeCookie(response, rawToken);
+            }
+
+            // Native app: the session cookie can't be sent from the WebView's local
+            // origin, so hand back a bearer token it can store and present instead
+            if (isMobile) {
+                resp.put("mobileToken", mobileTokenService.createToken(player.getId()));
             }
 
             return ResponseEntity.ok(resp);
@@ -213,6 +224,7 @@ public class AuthController {
                 Integer userId = (Integer) session.getAttribute("userId");
                 if (userId != null) {
                     rememberMeManagerService.clearTokens(userId);
+                    mobileTokenService.clearTokens(userId);
                 }
                 session.invalidate();
             }
