@@ -363,5 +363,18 @@ public class MediaController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    /**
+     * Get media storage capacity across all configured drives
+     * GET /api/media/storage-info
+     */
+    @GetMapping("/storage-info")
+    public ResponseEntity<?> getStorageInfo() {
+        try {
+            return ResponseEntity.ok(fileStorageService.getStorageInfo());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error reading storage: " + e.getMessage());
+        }
+    }
 }
 

@@ -26,6 +26,12 @@ public class LexiconSecurityConfig {
     @Value("${cors.allowed.origins:http://localhost:3000}")
     private String allowedOrigins;
 
+    @Value("${app.update.public-metadata:false}")
+    private boolean appUpdatePublicMetadata;
+
+    @Value("${app.update.public-download:false}")
+    private boolean appUpdatePublicDownload;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -39,24 +45,34 @@ public class LexiconSecurityConfig {
             .sessionManagement(session -> session
                 .maximumSessions(10) // Allow multiple sessions per user
             )
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/logout", "/api/auth/me").permitAll()
-                .requestMatchers("/api/health", "/api/info").permitAll()
-                .requestMatchers("/api/test/**").permitAll()  // Allow access to test endpoints
-                .requestMatchers("/api/players/**").permitAll()  // Allow access to player endpoints for testing
-                .requestMatchers("/api/media/**").permitAll()  // Allow access to media endpoints for testing
-                .requestMatchers("/api/playlists/**").permitAll()  // Allow access to playlist endpoints
-                .requestMatchers("/api/playback/**").permitAll()  // Allow access to playback position endpoints
-                .requestMatchers("/api/livestream/**").permitAll()  // Allow access to live stream endpoints
-                .requestMatchers("/api/stream/**").permitAll()  // Allow access to streaming endpoints
-                .requestMatchers("/api/download-queue/**").permitAll()  // Allow async download queue
-                .requestMatchers("/api/messages/**").permitAll()  // Allow message endpoints (Mumble bridge)
-                .requestMatchers("/api/chat/**").permitAll()     // Allow chat file upload/serving (Mumble bridge)
-                .requestMatchers("/api/avatar/**").permitAll()   // Allow avatar proxy endpoints (Mumble bridge)
-                .requestMatchers("/api/push/**").permitAll()     // Allow push notification endpoints
-                .requestMatchers("/api/**").authenticated()
-                .anyRequest().permitAll()
-            )
+            .authorizeHttpRequests(auth -> {
+                auth.requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/logout", "/api/auth/me").permitAll();
+                auth.requestMatchers("/api/auth/sso/**").permitAll();
+                auth.requestMatchers("/api/health", "/api/info").permitAll();
+                if (appUpdatePublicMetadata) {
+                    auth.requestMatchers("/api/app/version").permitAll();
+                }
+                if (appUpdatePublicDownload) {
+                    auth.requestMatchers("/api/app/download/**").permitAll();
+                }
+                auth.requestMatchers("/api/test/**").permitAll();  // Allow access to test endpoints
+                auth.requestMatchers("/api/players/**").permitAll();  // Allow access to player endpoints for testing
+                auth.requestMatchers("/api/media/**").permitAll();  // Allow access to media endpoints for testing
+                auth.requestMatchers("/api/playlists/**").permitAll();  // Allow access to playlist endpoints
+                auth.requestMatchers("/api/playback/**").permitAll();  // Allow access to playback position endpoints
+                auth.requestMatchers("/api/livestream/**").permitAll();  // Allow access to live stream endpoints
+                auth.requestMatchers("/api/stream/**").permitAll();  // Allow access to streaming endpoints
+                auth.requestMatchers("/api/download-queue/**").permitAll();  // Allow async download queue
+                auth.requestMatchers("/api/messages/**").permitAll();  // Allow message endpoints (Mumble bridge)
+                auth.requestMatchers("/api/chat/**").permitAll();     // Allow chat file upload/serving (Mumble bridge)
+                auth.requestMatchers("/api/avatar/**").permitAll();   // Allow avatar proxy endpoints (Mumble bridge)
+                auth.requestMatchers("/api/push/**").permitAll();     // Allow push notification endpoints
+                auth.requestMatchers("/api/notifications/**").permitAll();  // Allow notification endpoints (Mumble bridge + frontend SSE)
+                auth.requestMatchers("/api/events/**").permitAll();  // Allow events & polls endpoints (public voting; creation gated client-side)
+                auth.requestMatchers("/api/app/**").authenticated();
+                auth.requestMatchers("/api/**").authenticated();
+                auth.anyRequest().permitAll();
+            })
             .formLogin(form -> form.disable());
 
         return http.build();
@@ -115,6 +131,12 @@ public class LexiconSecurityConfig {
         originPatterns.add("http://localhost:3080");
         originPatterns.add("https://voice.alex-dyakin.com");
         originPatterns.add("https://mumble.alex-dyakin.com");
+
+        // Android (Capacitor) app — the WebView serves the bundled build from a
+        // local origin, so its fetches are still subject to CORS
+        originPatterns.add("capacitor://localhost");
+        originPatterns.add("https://localhost");
+        originPatterns.add("http://localhost");
         
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");
@@ -132,7 +154,9 @@ public class LexiconSecurityConfig {
         
         config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS","HEAD"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Content-Range", "Accept-Ranges", "Content-Length", "Content-Type", "Cache-Control", "X-Accel-Buffering"));
+        // X-Mobile-Token carries a rotated bearer token back to the Android app —
+        // it must be exposed or the WebView cannot read it off the response
+        config.setExposedHeaders(List.of("Content-Range", "Accept-Ranges", "Content-Length", "Content-Type", "Cache-Control", "X-Accel-Buffering", "X-Mobile-Token"));
         config.setMaxAge(3600L); // Cache preflight requests for 1 hour
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

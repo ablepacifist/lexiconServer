@@ -36,7 +36,10 @@ public class LiveStreamService {
     
     @Autowired
     private IPlaylistDatabase playlistDb;
-    
+
+    @Autowired
+    private lexicon.logic.NotificationManagerService notificationService;
+
     private final Random random = new Random();
     
     // Per-channel SSE emitters
@@ -287,6 +290,7 @@ public class LiveStreamService {
             liveStreamDb.clearSkipVotesForItem(nextItem.getId());
             broadcastStateChange(channel);
             broadcastQueueChange(channel);
+            maybeNotifyNowPlaying(channel, nextItem.getMediaFileId());
         } else {
             // Queue empty: pick random media of the correct type for this channel
             int randomMediaId = selectRandomMedia(channel);
@@ -296,7 +300,26 @@ public class LiveStreamService {
                 liveStreamDb.setCurrentMedia(channel, randomMediaId, 0);
                 broadcastStateChange(channel);
                 broadcastQueueChange(channel);
+                maybeNotifyNowPlaying(channel, randomMediaId);
             }
+        }
+    }
+
+    /**
+     * Fire a "now playing" notification for the music channel only. The
+     * notification service itself no-ops unless a user is subscribed to music,
+     * so this stays cheap even though tracks advance frequently.
+     */
+    private void maybeNotifyNowPlaying(String channel, int mediaId) {
+        if (!"music".equals(channel)) return;
+        try {
+            MediaFile media = mediaDb.getMediaFile(mediaId);
+            if (media == null) return;
+            String title = media.getTitle() != null && !media.getTitle().isBlank()
+                    ? media.getTitle() : media.getOriginalFilename();
+            notificationService.notifyNowPlaying(title, "/music-stream");
+        } catch (Exception e) {
+            System.err.println("Failed to send now-playing notification: " + e.getMessage());
         }
     }
     

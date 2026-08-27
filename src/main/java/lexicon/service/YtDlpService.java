@@ -1,6 +1,7 @@
 package lexicon.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -8,6 +9,9 @@ import java.util.concurrent.*;
 
 @Service
 public class YtDlpService {
+
+    @Value("${ytdlp.cookies.path:cookies.txt}")
+    private String cookiesPath;
     
     public enum DownloadType {
         AUDIO_ONLY,
@@ -70,20 +74,27 @@ public class YtDlpService {
         List<String> command = new ArrayList<>();
         command.add("yt-dlp");
         
-        // Use Firefox browser cookies for YouTube authentication
-        command.add("--cookies-from-browser");
-        command.add("firefox");
+        // Use cookies file for YouTube authentication (set YTDLP_COOKIES_PATH in .env)
+        File cookiesFile = new File(cookiesPath);
+        if (cookiesFile.exists()) {
+            command.add("--cookies");
+            command.add(cookiesFile.getAbsolutePath());
+        } else {
+            // Fall back to browser cookies if file not found
+            command.add("--cookies-from-browser");
+            command.add("firefox");
+        }
 
-        // Enable remote EJS challenge solver for YouTube's JS challenges
-        command.add("--remote-components");
-        command.add("ejs:github");
+        // Use Android + mweb player clients — bypass YouTube bot detection and PO token requirements
+        command.add("--extractor-args");
+        command.add("youtube:player_client=android,web");
 
         // Skip unavailable fragments (helps with live streams and problematic videos)
         command.add("--skip-unavailable-fragments");
         
         // Add user agent to help bypass restrictions
         command.add("--user-agent");
-        command.add("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36");
+        command.add("Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
         
         // Add referer header for better compatibility
         command.add("--add-header");

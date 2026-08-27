@@ -13,7 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Enhanced file storage service using optimized file system storage
@@ -23,7 +23,10 @@ public class OptimizedFileStorageService {
     
     @Autowired
     private StorageProperties storageProperties;
-    
+
+    @Autowired
+    private WslDiskUsageService wslDiskUsageService;
+
     /**
      * Store a file using the optimized storage strategy
      */
@@ -278,6 +281,23 @@ public class OptimizedFileStorageService {
         }
     }
     
+    public Map<String, Object> getStorageInfo() throws IOException {
+        List<WslDiskUsageService.Volume> drives = wslDiskUsageService.listPhysicalDriveVolumes();
+
+        List<Map<String, Object>> volumes = new ArrayList<>();
+        long totalBytes = 0, usedBytes = 0, freeBytes = 0;
+        int i = 1;
+        for (WslDiskUsageService.Volume v : drives) {
+            volumes.add(Map.of("label", "Media Drive " + i++,
+                    "totalBytes", v.totalBytes, "usedBytes", v.usedBytes, "freeBytes", v.freeBytes));
+            totalBytes += v.totalBytes;
+            usedBytes += v.usedBytes;
+            freeBytes += v.freeBytes;
+        }
+
+        return Map.of("volumes", volumes, "totalBytes", totalBytes, "usedBytes", usedBytes, "freeBytes", freeBytes);
+    }
+
     /**
      * Helper methods
      */
