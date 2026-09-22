@@ -1,5 +1,6 @@
 package lexicon.data;
 
+import lexicon.utils.DatabaseConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -19,10 +20,8 @@ import java.util.stream.Collectors;
  */
 @Component
 public class DatabaseInitializer {
-    
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+
+    private final String DATABASE_URL = DatabaseConfig.url();
     
     @PostConstruct
     public void initializeSchema() {

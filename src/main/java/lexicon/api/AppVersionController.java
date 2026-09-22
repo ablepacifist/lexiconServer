@@ -21,7 +21,7 @@ public class AppVersionController {
     @Value("${app.update.version-name:0.1.0}")
     private String versionName;
 
-    @Value("${app.update.download-url:https://api.alex-dyakin.com/api/app/download/latest}")
+    @Value("${app.update.download-url}")
     private String downloadUrl;
 
     @Value("${app.update.critical:false}")

@@ -2,6 +2,7 @@ package lexicon.data;
 
 import lexicon.object.Notification;
 import lexicon.object.NotificationPrefs;
+import lexicon.utils.DatabaseConfig;
 import org.springframework.stereotype.Repository;
 
 import jakarta.annotation.PostConstruct;
@@ -20,9 +21,7 @@ public class HSQLNotificationDatabase implements INotificationDatabase {
 
     private static final LocalDateTime EPOCH = LocalDateTime.of(1970, 1, 1, 0, 0);
 
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+    private final String DATABASE_URL = DatabaseConfig.url();
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DATABASE_URL, "SA", "");

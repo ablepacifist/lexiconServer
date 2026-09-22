@@ -12,7 +12,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.*;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -23,8 +22,20 @@ import java.util.List;
 @EnableWebSecurity
 public class LexiconSecurityConfig {
 
-    @Value("${cors.allowed.origins:http://localhost:3000}")
+    @Value("${cors.allowed.origins:}")
     private String allowedOrigins;
+
+    @Value("${cors.allowed.origin-patterns:}")
+    private String allowedOriginPatterns;
+
+    // Derived automatically into origin patterns as http://HOST:* below, only
+    // when set - so a bare LAN IP or the PlayIt tunnel host never has to be
+    // hard-coded here. See the root .env.example for LAN_HOST/PLAYIT_HOST.
+    @Value("${cors.lan-host:}")
+    private String lanHost;
+
+    @Value("${cors.playit-host:}")
+    private String playitHost;
 
     @Value("${app.update.public-metadata:false}")
     private boolean appUpdatePublicMetadata;
@@ -83,67 +94,28 @@ public class LexiconSecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        
-        // Parse comma-separated allowed origins from environment variable
-        List<String> origins = new ArrayList<>();
-        if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
-            origins.addAll(Arrays.asList(allowedOrigins.split(",")));
-        }
-        
-        // Always add localhost for development
-        if (!origins.contains("http://localhost:3000")) {
-            origins.add("http://localhost:3000");
-        }
-        if (!origins.contains("http://localhost:3001")) {
-            origins.add("http://localhost:3001");
-        }
-        
-        // Use origin patterns for wildcards support
-        // Spring's setAllowedOriginPatterns uses * as wildcard (NOT regex)
-        // Spring internally wraps patterns in \Q...\E and only expands * to .*
-        List<String> originPatterns = new ArrayList<>();
-        List<String> exactOrigins = new ArrayList<>();
-        
-        for (String origin : origins) {
-            if (origin.contains("*")) {
-                // Already has wildcard - use as pattern directly (don't convert to regex)
-                originPatterns.add(origin);
-            } else {
-                exactOrigins.add(origin);
-            }
-        }
-        
-        // Add common playit patterns (use * wildcard, NOT regex .*)
-        originPatterns.add("http://147.185.221.24:*");
-        originPatterns.add("https://147.185.221.24:*");
-        originPatterns.add("http://209.25.140.16:*");
-        originPatterns.add("https://209.25.140.16:*");
-        originPatterns.add("http://*.playit.pub:*");
-        originPatterns.add("https://*.playit.pub:*");
-        originPatterns.add("http://*.with.playit.plus:*");
-        originPatterns.add("https://*.with.playit.plus:*");
-        
-        // Add custom domain patterns (Cloudflare tunnel)
-        originPatterns.add("https://alex-dyakin.com");
-        originPatterns.add("https://*.alex-dyakin.com");
-        
-        // Mumble Bridge origins
-        originPatterns.add("http://localhost:3080");
-        originPatterns.add("https://voice.alex-dyakin.com");
-        originPatterns.add("https://mumble.alex-dyakin.com");
 
-        // Android (Capacitor) app — the WebView serves the bundled build from a
-        // local origin, so its fetches are still subject to CORS
-        originPatterns.add("capacitor://localhost");
-        originPatterns.add("https://localhost");
-        originPatterns.add("http://localhost");
-        
+        // Exact origins from CORS_ALLOWED_ORIGINS.
+        List<String> exactOrigins = splitCsv(allowedOrigins);
+
+        // Wildcard patterns from CORS_ALLOWED_ORIGIN_PATTERNS, plus LAN_HOST
+        // and PLAYIT_HOST derived automatically when those keys are set.
+        // Spring's setAllowedOriginPatterns uses * as a wildcard (NOT regex);
+        // it internally wraps patterns in \Q...\E and only expands * to .*
+        List<String> originPatterns = splitCsv(allowedOriginPatterns);
+        if (lanHost != null && !lanHost.isBlank()) {
+            originPatterns.add("http://" + lanHost.trim() + ":*");
+        }
+        if (playitHost != null && !playitHost.isBlank()) {
+            originPatterns.add("http://" + playitHost.trim() + ":*");
+        }
+
         // Log the configured origins for debugging
         System.out.println("=== CORS Configuration ===");
         System.out.println("Exact origins: " + exactOrigins);
         System.out.println("Origin patterns: " + originPatterns);
         System.out.println("========================");
-        
+
         // Set both exact origins and patterns
         if (!exactOrigins.isEmpty()) {
             config.setAllowedOrigins(exactOrigins);
@@ -151,7 +123,7 @@ public class LexiconSecurityConfig {
         if (!originPatterns.isEmpty()) {
             config.setAllowedOriginPatterns(originPatterns);
         }
-        
+
         config.setAllowedMethods(List.of("GET","POST","PUT","DELETE","OPTIONS","HEAD"));
         config.setAllowedHeaders(List.of("*"));
         // X-Mobile-Token carries a rotated bearer token back to the Android app —
@@ -162,5 +134,20 @@ public class LexiconSecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    /** Comma-separated property value -&gt; trimmed, non-empty entries. */
+    private static List<String> splitCsv(String csv) {
+        List<String> result = new ArrayList<>();
+        if (csv == null || csv.isBlank()) {
+            return result;
+        }
+        for (String part : csv.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                result.add(trimmed);
+            }
+        }
+        return result;
     }
 }

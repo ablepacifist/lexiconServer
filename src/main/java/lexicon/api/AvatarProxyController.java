@@ -1,5 +1,6 @@
 package lexicon.api;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -14,7 +15,7 @@ import java.util.Map;
 
 /**
  * Proxy controller that forwards avatar API requests to the Mumble Bridge
- * at https://voice.alex-dyakin.com
+ * (bridge.base-url, i.e. PUBLIC_BRIDGE_URL - see application.properties).
  *
  * Endpoints:
  *   GET  /api/avatar/{username}  → bridge GET  /api/avatar/{username}
@@ -26,7 +27,8 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class AvatarProxyController {
 
-    private static final String BRIDGE_BASE_URL = "https://voice.alex-dyakin.com";
+    @Value("${bridge.base-url}")
+    private String bridgeBaseUrl;
 
     private final RestTemplate restTemplate;
 
@@ -41,7 +43,7 @@ public class AvatarProxyController {
     @GetMapping("/{username}")
     public ResponseEntity<Map<String, Object>> getAvatar(@PathVariable String username) {
         try {
-            String url = BRIDGE_BASE_URL + "/api/avatar/" + username;
+            String url = bridgeBaseUrl + "/api/avatar/" + username;
             ResponseEntity<Map> bridgeResponse = restTemplate.getForEntity(url, Map.class);
 
             Map<String, Object> response = new HashMap<>();
@@ -76,7 +78,7 @@ public class AvatarProxyController {
             @RequestParam(value = "userId", required = false) Integer userId,
             @RequestParam("avatar") MultipartFile avatarFile) {
         try {
-            String url = BRIDGE_BASE_URL + "/api/avatar/upload";
+            String url = bridgeBaseUrl + "/api/avatar/upload";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -128,7 +130,7 @@ public class AvatarProxyController {
     @PostMapping("/remove")
     public ResponseEntity<Map<String, Object>> removeAvatar(@RequestBody Map<String, Object> payload) {
         try {
-            String url = BRIDGE_BASE_URL + "/api/avatar/remove";
+            String url = bridgeBaseUrl + "/api/avatar/remove";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -164,7 +166,7 @@ public class AvatarProxyController {
     @GetMapping("/image/{*path}")
     public ResponseEntity<byte[]> proxyAvatarImage(@PathVariable String path) {
         try {
-            String url = BRIDGE_BASE_URL + "/uploads/avatars/" + path;
+            String url = bridgeBaseUrl + "/uploads/avatars/" + path;
             ResponseEntity<byte[]> bridgeResponse = restTemplate.getForEntity(url, byte[].class);
 
             if (bridgeResponse.getStatusCode().is2xxSuccessful() && bridgeResponse.getBody() != null) {

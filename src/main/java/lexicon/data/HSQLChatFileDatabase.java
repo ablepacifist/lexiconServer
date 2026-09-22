@@ -1,6 +1,7 @@
 package lexicon.data;
 
 import lexicon.object.ChatFile;
+import lexicon.utils.DatabaseConfig;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -9,9 +10,7 @@ import java.time.LocalDateTime;
 @Repository
 public class HSQLChatFileDatabase implements IChatFileDatabase {
 
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+    private final String DATABASE_URL = DatabaseConfig.url();
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DATABASE_URL, "SA", "");

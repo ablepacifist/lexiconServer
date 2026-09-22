@@ -6,6 +6,7 @@ import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.object.Playlist;
 import lexicon.object.PlaylistItem;
+import lexicon.utils.DatabaseConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 import com.zaxxer.hikari.HikariConfig;
@@ -17,10 +18,8 @@ import java.util.List;
 
 @Repository
 public class HSQLPlaylistDatabase implements IPlaylistDatabase {
-    
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+
+    private final String DATABASE_URL = DatabaseConfig.url();
     private final HikariDataSource dataSource;
     
     @Autowired
