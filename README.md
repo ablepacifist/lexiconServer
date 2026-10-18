@@ -30,14 +30,10 @@ object/     - Domain objects (User, MediaFile, etc.)
 - **Security**: Spring Security with BCrypt
 - **File Upload**: Multipart file handling
 
-## API Gateway Integration
+## Ports
 
-Lexicon is designed to work with an API gateway alongside other services:
-
-- **Gateway Port**: 8080 (nginx)
-- **Lexicon Port**: 36568 (internal)
-- **Database Port**: 9003 (HSQLDB)
-- **API Prefix**: `/api/lexicon/`
+- **Lexicon Port**: `36568` by default (`LEXICON_PORT` / `server.port`)
+- **Database Port**: `9002` by default (parsed from `DATABASE_URL`, see `.env.example`)
 
 ## Quick Start
 
@@ -162,8 +158,6 @@ This interactive script will:
 4. **Test the API**:
    ```bash
    curl http://localhost:36568/api/health
-   # or through gateway:
-   curl http://localhost:8080/api/lexicon/health
    ```
 
 ## API Endpoints
@@ -268,21 +262,28 @@ lexiconServer/
 
 ### Environment Variables
 
-> **Note**: Spring Boot does NOT automatically load `.env` files. You need to either:
-> - Export variables in your shell before running the app: `export YTDLP_COOKIES_PATH=/path/to/cookies.txt`
-> - Add them to your shell config file (`~/.bashrc` or `~/.zshrc`)
-> - Use an IDE that supports `.env` files (like IntelliJ IDEA with EnvFile plugin)
-> - Use a library like `spring-dotenv` (not included by default)
+Spring Boot loads `.env` files automatically via `spring.config.import` in
+`application.properties`: this module's own `.env` (git-ignored; copy
+`.env.example` to `.env` to run standalone) is overridden by the monorepo
+root `.env` (same key names; found via `$MASTER_ENV_FILE` or `../.env`),
+which is overridden by real process environment variables. Neither file is
+required - the app still starts on the `${KEY:default}` values below if
+both are absent. See `.env.example` for the full list this module reads.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `YTDLP_COOKIES_PATH` | _(none)_ | **Required** for YouTube downloads. Path to your YouTube cookies file |
+| `YTDLP_COOKIES_PATH` | `cookies.txt` | Path to your YouTube cookies file (required for YouTube downloads) |
 | `LEXICON_PORT` | `36568` | Port for the Lexicon server |
 | `SERVER_ADDRESS` | `0.0.0.0` | Server bind address |
 | `DATABASE_URL` | `jdbc:hsqldb:hsql://localhost:9002/mydb` | HSQLDB connection URL |
-| `MAX_FILE_SIZE` | `100MB` | Maximum file upload size |
-| `MAX_REQUEST_SIZE` | `100MB` | Maximum request size |
+| `MAX_FILE_SIZE` | `100MB` (`2GB` in the default profile) | Maximum file upload size |
+| `MAX_REQUEST_SIZE` | `100MB` (`2GB` in the default profile) | Maximum request size |
 | `UPLOAD_DIR` | `./uploads` | Directory for file uploads |
+| `CORS_ALLOWED_ORIGINS` / `CORS_ALLOWED_ORIGIN_PATTERNS` | see `.env.example` | Allowed browser origins (exact / wildcard) |
+| `LAN_HOST` / `PLAYIT_HOST` | _(unset)_ | When set, `http://<host>:*` is added to the CORS origin patterns automatically |
+| `LEXI_PORT` / `LEXI_BASE_URL` / `LEXI_TOOL_TOKEN` | `8765` / derived / _(none)_ | Voice relay to Lexi (`/api/voice`) |
+| `PUBLIC_BRIDGE_URL` | `https://voice.alex-dyakin.com` | Mumble Bridge base URL (avatar proxy) |
+| `PUBLIC_LEXICON_URL` | `https://api.alex-dyakin.com` | Used to compose the app-update download URL |
 
 ### application.properties
 
@@ -293,19 +294,20 @@ The application uses Spring Boot properties with environment variable overrides:
 server.port=${LEXICON_PORT:36568}
 server.address=${SERVER_ADDRESS:0.0.0.0}
 
-# Database Configuration
-database.url=${DATABASE_URL:jdbc:hsqldb:hsql://localhost:9002/mydb}
-
 # File upload configuration
-spring.servlet.multipart.max-file-size=${MAX_FILE_SIZE:100MB}
-spring.servlet.multipart.max-request-size=${MAX_REQUEST_SIZE:100MB}
+spring.servlet.multipart.max-file-size=${MAX_FILE_SIZE:2GB}
+spring.servlet.multipart.max-request-size=${MAX_REQUEST_SIZE:2GB}
 
 # File storage path
 lexicon.file.upload-dir=${UPLOAD_DIR:./uploads}
 
 # yt-dlp configuration
-ytdlp.cookies.path=${YTDLP_COOKIES_PATH:../Lexicon/youtube_cookies.txt}
+ytdlp.cookies.path=${YTDLP_COOKIES_PATH:cookies.txt}
 ```
+
+`DATABASE_URL` is not a Spring property (there is no `database.url` key) -
+it is read directly by `lexicon.utils.DatabaseConfig`, used by every
+`HSQL*Database` class. See that class's Javadoc for why.
 
 ## TODO
 

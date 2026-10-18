@@ -1,5 +1,7 @@
 package lexicon.scripts;
 
+import lexicon.utils.DatabaseConfig;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
@@ -9,9 +11,9 @@ import java.sql.Statement;
  * Run this once to initialize the schema
  */
 public class CreatePlaylistTables {
-    
+
     public static void main(String[] args) {
-        String url = "jdbc:hsqldb:hsql://localhost:9002/mydb";
+        String url = DatabaseConfig.url();
         String user = "SA";
         String password = "";
         

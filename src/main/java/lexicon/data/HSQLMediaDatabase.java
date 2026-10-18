@@ -3,6 +3,7 @@ package lexicon.data;
 import lexicon.object.MediaFile;
 import lexicon.object.MediaType;
 import lexicon.object.PlaybackPosition;
+import lexicon.utils.DatabaseConfig;
 import org.springframework.stereotype.Repository;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -18,10 +19,8 @@ import java.io.InputStream;
  */
 @Repository
 public class HSQLMediaDatabase implements IMediaDatabase {
-    
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+
+    private final String DATABASE_URL = DatabaseConfig.url();
     private final HikariDataSource dataSource;
     
     public HSQLMediaDatabase() {

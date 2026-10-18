@@ -1,6 +1,7 @@
 package lexicon.data;
 
 import lexicon.object.MobileToken;
+import lexicon.utils.DatabaseConfig;
 import org.springframework.stereotype.Repository;
 
 import jakarta.annotation.PostConstruct;
@@ -15,9 +16,7 @@ import java.time.LocalDateTime;
 @Repository
 public class HSQLMobileTokenDatabase implements IMobileTokenDatabase {
 
-    private final String DATABASE_URL =
-            System.getProperty("database.url",
-                    System.getenv().getOrDefault("DATABASE_URL", "jdbc:hsqldb:hsql://localhost:9002/mydb"));
+    private final String DATABASE_URL = DatabaseConfig.url();
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DATABASE_URL, "SA", "");

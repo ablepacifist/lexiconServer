@@ -18,9 +18,12 @@ public class YoutubeImportService {
 
     @Value("${ytdlp.cookies.path:cookies.txt}")
     private String cookiesPath;
-    
-    private static final String MEDIA_UPLOAD_URL = "http://localhost:36568/api/media/upload-from-url";
-    
+
+    // Composed from this server's own port (respects LEXICON_PORT) rather
+    // than a hard-coded port number - this is an in-process loopback call.
+    @Value("${server.port}")
+    private int serverPort;
+
     /**
      * Fetch playlist metadata from YouTube
      * @return JsonNode containing playlist entries
@@ -96,7 +99,7 @@ public class YoutubeImportService {
         
         ProcessBuilder pb = new ProcessBuilder(
             "curl", "-s", "-X", "POST",
-            MEDIA_UPLOAD_URL,
+            "http://127.0.0.1:" + serverPort + "/api/media/upload-from-url",
             "-F", "url=" + videoUrl,
             "-F", "userId=" + userId,
             "-F", "title=" + title,
