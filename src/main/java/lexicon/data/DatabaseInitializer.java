@@ -36,7 +36,7 @@ public class DatabaseInitializer {
             }
             
             // Execute schema creation
-            try (Connection conn = DriverManager.getConnection(DATABASE_URL, "SA", "");
+            try (Connection conn = DriverManager.getConnection(DATABASE_URL, "SA", DatabaseConfig.password());
                  Statement stmt = conn.createStatement()) {
                 
                 // Split by semicolon and execute each statement

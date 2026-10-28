@@ -5,6 +5,8 @@ import lexicon.object.Player;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.Collection;
 
@@ -80,22 +82,35 @@ public class PlayerManager implements PlayerManagerService {
             return null;
         }
         
-        // Verify password (handle both BCrypt and legacy plain text)
+        // Verify password. BCrypt is the norm; a few old rows still hold plain text. Those are
+        // verified once (constant time) and immediately replaced by a BCrypt hash, so nobody is
+        // locked out and nobody has to reset anything.
         String storedPassword = player.getPassword();
-        boolean passwordMatches;
-        if (storedPassword.startsWith("$2a$") || storedPassword.startsWith("$2b$")) {
-            passwordMatches = passwordEncoder.matches(password, storedPassword);
-        } else {
-            passwordMatches = password.equals(storedPassword);
+        if (storedPassword == null) {
+            return null;
         }
-        
-        if (passwordMatches) {
-            return player;
+        if (isBcryptHash(storedPassword)) {
+            return passwordEncoder.matches(password, storedPassword) ? player : null;
         }
-        
-        return null;
+
+        boolean legacyMatch = MessageDigest.isEqual(
+                password.getBytes(StandardCharsets.UTF_8),
+                storedPassword.getBytes(StandardCharsets.UTF_8));
+        if (!legacyMatch) {
+            return null;
+        }
+
+        String upgraded = passwordEncoder.encode(password);
+        database.updatePlayerPassword(player.getId(), upgraded);
+        System.out.println("Upgraded stored password to a BCrypt hash for player id " + player.getId());
+        return new Player(player.getId(), player.getUsername(), upgraded, player.getLevel(),
+                player.getEmail(), player.getDisplayName(), player.getRegistrationDate(), player.getLastLoginDate());
     }
     
+    private static boolean isBcryptHash(String stored) {
+        return stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$");
+    }
+
     @Override
     public Player getPlayerById(int playerId) {
         return database.getPlayer(playerId);

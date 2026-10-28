@@ -48,8 +48,11 @@ test {
     systemProperty 'junit.jupiter.execution.timeout.default', '30s'
     
     // Exclude problematic integration tests that hang (SpringBootTest tests)
-    exclude '**/PlaylistManagerTest.class'
-    exclude '**/PlayerManagerTest.class'
+    // (pass -PincludeAllTests to run them anyway, e.g. ./gradlew test -PincludeAllTests --tests '*PlayerManagerTest')
+    if (!project.hasProperty('includeAllTests')) {
+        exclude '**/PlaylistManagerTest.class'
+        exclude '**/PlayerManagerTest.class'
+    }
 }
 
 jacoco {

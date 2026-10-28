@@ -115,6 +115,28 @@ class PlayerManagerTest {
     }
     
     @Test
+    void testLegacyPlaintextPasswordIsUpgradedToBcryptOnLogin() {
+        database.addPlayer(new Player(50, "oldtimer", "old-plain-pw", 1, "o@example.com", "Old", null, null));
+
+        Player authenticated = playerManager.authenticatePlayer("oldtimer", "old-plain-pw");
+
+        assertNotNull(authenticated);
+        String stored = database.getPlayer(50).getPassword();
+        assertTrue(stored.startsWith("$2a$"), "stored password must now be a BCrypt hash");
+        assertNotEquals("old-plain-pw", stored);
+        assertEquals("o@example.com", database.getPlayer(50).getEmail()); // rest of the row untouched
+        assertNotNull(playerManager.authenticatePlayer("oldtimer", "old-plain-pw")); // still logs in
+    }
+
+    @Test
+    void testLegacyPlaintextWrongPasswordRejectedAndNotRewritten() {
+        database.addPlayer(new Player(51, "oldtimer2", "old-plain-pw", 1, null, "Old2", null, null));
+
+        assertNull(playerManager.authenticatePlayer("oldtimer2", "nope"));
+        assertEquals("old-plain-pw", database.getPlayer(51).getPassword());
+    }
+
+    @Test
     void testAuthenticatePlayerWrongPassword() {
         playerManager.registerPlayer("user", "rightpass", "user@example.com", "User");
         

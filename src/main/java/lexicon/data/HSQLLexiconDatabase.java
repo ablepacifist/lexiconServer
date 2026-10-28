@@ -19,7 +19,7 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     private final String DATABASE_URL = DatabaseConfig.url();
     
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(DATABASE_URL, "SA", "");
+        return DriverManager.getConnection(DATABASE_URL, "SA", DatabaseConfig.password());
     }
     
     // Player management methods
@@ -204,6 +204,20 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
         }
     }
     
+    @Override
+    public void updatePlayerPassword(int playerId, String hashedPassword) {
+        try (Connection conn = getConnection()) {
+            String sql = "UPDATE players SET password = ? WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setString(1, hashedPassword);
+                stmt.setInt(2, playerId);
+                stmt.executeUpdate();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void updatePlayerLastLogin(int playerId, LocalDateTime lastLoginDate) {
         try (Connection conn = getConnection()) {

@@ -19,6 +19,8 @@ public interface ILexiconDatabase {
     void updatePlayer(Player player);
     void deletePlayer(int playerId);
     void updatePlayerLastLogin(int playerId, java.time.LocalDateTime lastLoginDate);
+    /** Replaces only the stored password (used to upgrade a legacy plaintext value to a BCrypt hash). */
+    void updatePlayerPassword(int playerId, String hashedPassword);
     
     // Additional utility methods
     boolean playerExists(String username);

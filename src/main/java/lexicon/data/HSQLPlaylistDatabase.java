@@ -29,6 +29,7 @@ public class HSQLPlaylistDatabase implements IPlaylistDatabase {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(DATABASE_URL);
         config.setUsername("SA");
+        config.setPassword(DatabaseConfig.password());
         config.setPassword("");
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(2);
