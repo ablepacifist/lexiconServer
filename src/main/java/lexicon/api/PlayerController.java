@@ -175,6 +175,12 @@ public class PlayerController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, Object>> deletePlayer(@PathVariable int id) {
+        // A player may delete only their own account (the route rules already keep the bridge out)
+        LexiconPrincipal caller = LexiconPrincipal.current();
+        if (caller == null || caller.isService() || caller.getUserId() != id) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("error", "You can only delete your own account"));
+        }
         try {
             boolean deleted = playerManagerService.deletePlayer(id);
             if (!deleted) {

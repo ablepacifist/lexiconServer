@@ -77,6 +77,10 @@ public class AvatarProxyController {
             @RequestParam("username") String username,
             @RequestParam(value = "userId", required = false) Integer userId,
             @RequestParam("avatar") MultipartFile avatarFile) {
+        if (LexiconPrincipal.impersonatesName(username)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", "You can only change your own avatar"));
+        }
         try {
             String url = bridgeBaseUrl + "/api/avatar/upload";
 
@@ -129,6 +133,11 @@ public class AvatarProxyController {
      */
     @PostMapping("/remove")
     public ResponseEntity<Map<String, Object>> removeAvatar(@RequestBody Map<String, Object> payload) {
+        Object target = payload.get("username");
+        if (target != null && LexiconPrincipal.impersonatesName(target.toString())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", "You can only change your own avatar"));
+        }
         try {
             String url = bridgeBaseUrl + "/api/avatar/remove";
 

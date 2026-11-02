@@ -1,5 +1,7 @@
 package lexicon.api;
 
+import lexicon.logic.PlayerManagerService;
+import lexicon.logic.RememberMeManagerService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,7 +10,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.web.cors.*;
 
 import java.util.ArrayList;
@@ -21,6 +27,10 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class LexiconSecurityConfig {
+
+    // hasRole() adds the ROLE_ prefix itself
+    private static final String ROLE_USER = "USER";
+    private static final String ROLE_SERVICE = "SERVICE";
 
     @Value("${cors.allowed.origins:}")
     private String allowedOrigins;
@@ -37,6 +47,16 @@ public class LexiconSecurityConfig {
     @Value("${cors.playit-host:}")
     private String playitHost;
 
+    // Shared secret the GTW Mumble bridge sends as X-Service-Token. Empty = service access off.
+    @Value("${lexicon.service-token:}")
+    private String serviceToken;
+
+    // Transition switch for deploying the bridge: while true, the routes the GTW bridge used to call
+    // without credentials stay open. Set LEXICON_LEGACY_OPEN_ROUTES=false (or remove it) once the
+    // bridge sends X-Service-Token.
+    @Value("${lexicon.security.legacy-open-routes:false}")
+    private boolean legacyOpenRoutes;
+
     @Value("${app.update.public-metadata:false}")
     private boolean appUpdatePublicMetadata;
 
@@ -49,7 +69,9 @@ public class LexiconSecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, CorsConfigurationSource corsSource) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, CorsConfigurationSource corsSource,
+                                           RememberMeManagerService rememberMe,
+                                           PlayerManagerService players) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsSource))
             .csrf(csrf -> csrf.disable())
@@ -57,6 +79,7 @@ public class LexiconSecurityConfig {
                 .maximumSessions(10) // Allow multiple sessions per user
             )
             .authorizeHttpRequests(auth -> {
+                // Sign-in and the pages that run before it
                 auth.requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/logout", "/api/auth/me").permitAll();
                 auth.requestMatchers("/api/auth/sso/**").permitAll();
                 auth.requestMatchers("/api/health", "/api/info").permitAll();
@@ -66,24 +89,45 @@ public class LexiconSecurityConfig {
                 if (appUpdatePublicDownload) {
                     auth.requestMatchers("/api/app/download/**").permitAll();
                 }
-                auth.requestMatchers("/api/test/**").permitAll();  // Allow access to test endpoints
-                auth.requestMatchers("/api/players/**").permitAll();  // Allow access to player endpoints for testing
-                auth.requestMatchers("/api/media/**").permitAll();  // Allow access to media endpoints for testing
-                auth.requestMatchers("/api/playlists/**").permitAll();  // Allow access to playlist endpoints
-                auth.requestMatchers("/api/playback/**").permitAll();  // Allow access to playback position endpoints
-                auth.requestMatchers("/api/livestream/**").permitAll();  // Allow access to live stream endpoints
-                auth.requestMatchers("/api/stream/**").permitAll();  // Allow access to streaming endpoints
-                auth.requestMatchers("/api/download-queue/**").permitAll();  // Allow async download queue
-                auth.requestMatchers("/api/messages/**").permitAll();  // Allow message endpoints (Mumble bridge)
-                auth.requestMatchers("/api/chat/**").permitAll();     // Allow chat file upload/serving (Mumble bridge)
-                auth.requestMatchers("/api/avatar/**").permitAll();   // Allow avatar proxy endpoints (Mumble bridge)
-                auth.requestMatchers("/api/push/**").permitAll();     // Allow push notification endpoints
-                auth.requestMatchers("/api/notifications/**").permitAll();  // Allow notification endpoints (Mumble bridge + frontend SSE)
-                auth.requestMatchers("/api/events/**").permitAll();  // Allow events & polls endpoints (public voting; creation gated client-side)
-                auth.requestMatchers("/api/app/**").authenticated();
-                auth.requestMatchers("/api/**").authenticated();
+
+                // Loaded by <audio>/<video>/<img> tags and EventSource, which cannot send the Android
+                // shell's Authorization header, so they have to stay readable without a login.
+                auth.requestMatchers(HttpMethod.GET,
+                        "/api/media/stream/**", "/api/stream/**",
+                        "/api/avatar/image/**", "/api/chat/files/**",
+                        "/api/livestream/updates", "/api/notifications/stream",
+                        "/api/playlists/import-progress/**").permitAll();
+
+                // The GTW Mumble bridge (X-Service-Token) may use only what it needs; a signed-in player may use anything
+                // else below. No player client calls these directly (players reach them through the bridge), so
+                // they are bridge-only: storing chat messages, chat uploads, and creating notifications or pushes for anyone.
+                String[] bridgeOnly = {"/api/messages/**", "/api/chat/upload",
+                        "/api/push/send", "/api/push/send-bulk"};
+                String[] bridgeAndPlayers = {"/api/chat/**", "/api/avatar/**", "/api/push/**",
+                        "/api/notifications/**", "/api/livestream/**"};
+                String[] bridgeReads = {"/api/players", "/api/players/username/*", "/api/media/**", "/api/playlists/**"};
+                if (legacyOpenRoutes) {
+                    auth.requestMatchers(bridgeOnly).permitAll();
+                    auth.requestMatchers(bridgeAndPlayers).permitAll();
+                    auth.requestMatchers(HttpMethod.POST, "/api/notifications").permitAll();
+                    auth.requestMatchers(HttpMethod.GET, bridgeReads).permitAll();
+                } else {
+                    auth.requestMatchers(bridgeOnly).hasRole(ROLE_SERVICE);
+                    auth.requestMatchers(HttpMethod.POST, "/api/notifications").hasRole(ROLE_SERVICE);
+                    auth.requestMatchers(bridgeAndPlayers).hasAnyRole(ROLE_USER, ROLE_SERVICE);
+                    auth.requestMatchers(HttpMethod.GET, bridgeReads).hasAnyRole(ROLE_USER, ROLE_SERVICE);
+                }
+
+                // Everything else under /api needs a signed-in player
+                auth.requestMatchers("/api/**").hasRole(ROLE_USER);
                 auth.anyRequest().permitAll();
             })
+            // Unauthenticated callers of a protected route get 401 (the site and app already handle that), not 403
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+            // After SessionManagementFilter so Spring's concurrent-session control stays out of Lexicon's own sessions
+            .addFilterAfter(new ServiceTokenAuthFilter(serviceToken), SessionManagementFilter.class)
+            .addFilterAfter(new RememberMeSessionFilter(rememberMe, players), ServiceTokenAuthFilter.class)
+            .addFilterAfter(new SessionAuthFilter(), RememberMeSessionFilter.class)
             .formLogin(form -> form.disable());
 
         return http.build();
