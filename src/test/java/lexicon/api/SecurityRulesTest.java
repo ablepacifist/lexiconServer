@@ -86,7 +86,10 @@ class SecurityRulesTest {
                 {"GET", "/api/media/stream/1"}, {"GET", "/api/stream/1"},
                 {"GET", "/api/avatar/image/a/b.png"}, {"GET", "/api/chat/files/1"}, {"GET", "/api/chat/files/1/thumb"},
                 {"GET", "/api/livestream/updates"}, {"GET", "/api/notifications/stream"},
-                {"GET", "/api/playlists/import-progress/x"}}) {
+                {"GET", "/api/playlists/import-progress/x"},
+                // guests vote on shared event polls without an account
+                {"GET", "/api/events/7"}, {"GET", "/api/events/7/polls/3"},
+                {"PUT", "/api/events/7/polls/3/votes"}, {"POST", "/api/events/7/polls/3/options"}}) {
             anonymous(HttpMethod.valueOf(r[0]), r[1]).andExpect(status().isOk());
         }
     }

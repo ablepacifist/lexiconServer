@@ -98,6 +98,12 @@ public class LexiconSecurityConfig {
                         "/api/livestream/updates", "/api/notifications/stream",
                         "/api/playlists/import-progress/**").permitAll();
 
+                // Event polls are shared by link and voted on by guests (a browser-generated voterKey, no account).
+                // Creating events and polls still needs a login.
+                auth.requestMatchers(HttpMethod.GET, "/api/events/*", "/api/events/*/polls/*").permitAll();
+                auth.requestMatchers(HttpMethod.PUT, "/api/events/*/polls/*/votes").permitAll();
+                auth.requestMatchers(HttpMethod.POST, "/api/events/*/polls/*/options").permitAll();
+
                 // The GTW Mumble bridge (X-Service-Token) may use only what it needs; a signed-in player may use anything
                 // else below. No player client calls these directly (players reach them through the bridge), so
                 // they are bridge-only: storing chat messages, chat uploads, and creating notifications or pushes for anyone.
