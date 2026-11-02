@@ -1,5 +1,6 @@
 package lexicon.service;
 
+import lexicon.utils.UrlSafety;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 import java.io.*;
@@ -52,9 +53,11 @@ public class YtDlpService {
             return new DownloadResult(false, null, null, null, "URL cannot be empty");
         }
         
-        // Validate URL format
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            return new DownloadResult(false, null, null, null, "Invalid URL format. Must start with http:// or https://");
+        // Only public http(s) URLs: not file://, not "--option" look-alikes, not this server's own network
+        try {
+            UrlSafety.requirePublicHttpUrl(url);
+        } catch (IllegalArgumentException e) {
+            return new DownloadResult(false, null, null, null, e.getMessage());
         }
         
         // Check if yt-dlp is installed
@@ -133,6 +136,7 @@ public class YtDlpService {
         command.add(outputTemplate);
         command.add("--print");
         command.add("after_move:filepath"); // Print final file path
+        command.add("--"); // everything after this is a URL, never an option
         command.add(url);
         
         try {

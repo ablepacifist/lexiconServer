@@ -50,16 +50,8 @@ public class RateLimitFilter implements Filter {
     }
 
     private String getClientIp(HttpServletRequest request) {
-        // Cloudflare sets CF-Connecting-IP for the real client IP
-        String cfIp = request.getHeader("CF-Connecting-IP");
-        if (cfIp != null && !cfIp.isEmpty()) return cfIp;
-
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty()) {
-            // Take the first IP (original client)
-            return xff.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        // Forwarded-address headers are believed only from the local Cloudflare tunnel, never from a direct caller
+        return ClientIp.of(request);
     }
 
     private static class RateBucket {

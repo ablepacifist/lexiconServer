@@ -92,7 +92,7 @@ public class RememberMeSessionFilter extends OncePerRequestFilter {
 
         Cookie cookie = new Cookie(COOKIE_NAME, restored.newRawToken());
         cookie.setHttpOnly(true);
-        cookie.setSecure(false); // same as AuthController; made conditional on HTTPS later in this phase
+        cookie.setSecure(ClientIp.isHttps(request)); // Secure over HTTPS only, so plain-HTTP LAN logins keep working
         cookie.setPath("/");
         cookie.setMaxAge(COOKIE_MAX_AGE);
         response.addCookie(cookie);

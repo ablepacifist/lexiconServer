@@ -2,6 +2,10 @@ package lexicon.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lexicon.logic.MediaManagerService;
+import lexicon.utils.UrlSafety;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -19,16 +23,17 @@ public class YoutubeImportService {
     @Value("${ytdlp.cookies.path:cookies.txt}")
     private String cookiesPath;
 
-    // Composed from this server's own port (respects LEXICON_PORT) rather
-    // than a hard-coded port number - this is an in-process loopback call.
-    @Value("${server.port}")
-    private int serverPort;
+    // Lazy: the playlist code that uses this importer sits on top of the media manager
+    @Autowired
+    @Lazy
+    private MediaManagerService mediaManager;
 
     /**
      * Fetch playlist metadata from YouTube
      * @return JsonNode containing playlist entries
      */
     public PlaylistMetadata fetchPlaylistMetadata(String playlistUrl) throws Exception {
+        UrlSafety.requirePublicHttpUrl(playlistUrl);
         List<String> cmd = new ArrayList<>();
         cmd.add("yt-dlp");
         java.io.File cookiesFile = new java.io.File(cookiesPath);
@@ -43,6 +48,7 @@ public class YoutubeImportService {
         cmd.add("youtube:player_client=android,web");
         cmd.add("--dump-json");
         cmd.add("--flat-playlist");
+        cmd.add("--"); // everything after this is a URL, never an option
         cmd.add(playlistUrl);
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
@@ -97,47 +103,20 @@ public class YoutubeImportService {
                                        int userId, boolean isPublic, String mediaType, String downloadType) throws Exception {
         String videoUrl = "https://www.youtube.com/watch?v=" + videoId;
         
-        ProcessBuilder pb = new ProcessBuilder(
-            "curl", "-s", "-X", "POST",
-            "http://127.0.0.1:" + serverPort + "/api/media/upload-from-url",
-            "-F", "url=" + videoUrl,
-            "-F", "userId=" + userId,
-            "-F", "title=" + title,
-            "-F", "description=From playlist: " + playlistName,
-            "-F", "isPublic=" + isPublic,
-            "-F", "mediaType=" + mediaType,
-            "-F", "downloadType=" + downloadType
-        );
-        
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        
-        BufferedReader reader = new BufferedReader(
-            new InputStreamReader(process.getInputStream()));
-        
-        StringBuilder response = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            response.append(line);
+        if (mediaManager == null) {
+            System.err.println("Playlist import: media manager is not available");
+            return -1;
         }
-        
-        process.waitFor();
-        reader.close();
-        
-        // Parse response to get media ID
-        String responseStr = response.toString();
-        System.out.println("Media upload response: " + responseStr);
-        
-        if (responseStr.contains("\"success\":true") && responseStr.contains("\"mediaFile\"")) {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode mediaResponse = mapper.readTree(responseStr);
-            JsonNode mediaFile = mediaResponse.get("mediaFile");
-            if (mediaFile != null && mediaFile.has("id")) {
-                return mediaFile.get("id").asInt();
-            }
+        try {
+            // Same code path as the upload-from-url endpoint, called directly: no HTTP round trip to ourselves,
+            // so no credentials are needed from inside the server.
+            lexicon.object.MediaFile mediaFile = mediaManager.uploadMediaFromUrl(
+                videoUrl, userId, title, "From playlist: " + playlistName, isPublic, mediaType, downloadType);
+            return mediaFile != null ? mediaFile.getId() : -1;
+        } catch (Exception e) {
+            System.err.println("Playlist import: could not add " + videoUrl + ": " + e.getMessage());
+            return -1;
         }
-        
-        return -1;
     }
     
     /**

@@ -14,6 +14,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.security.web.session.SessionManagementFilter;
 import org.springframework.web.cors.*;
 
@@ -128,6 +129,11 @@ public class LexiconSecurityConfig {
                 auth.requestMatchers("/api/**").hasRole(ROLE_USER);
                 auth.anyRequest().permitAll();
             })
+            // nosniff and frame-deny are Spring's defaults; add HSTS (only when the visitor really used HTTPS, which
+            // behind the tunnel means the forwarded-proto header) and a referrer policy
+            .headers(h -> h
+                .httpStrictTransportSecurity(hsts -> hsts.requestMatcher(ClientIp::isHttps).maxAgeInSeconds(15552000))
+                .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
             // Unauthenticated callers of a protected route get 401 (the site and app already handle that), not 403
             .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             // After SessionManagementFilter so Spring's concurrent-session control stays out of Lexicon's own sessions

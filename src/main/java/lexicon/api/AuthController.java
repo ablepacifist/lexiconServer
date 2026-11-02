@@ -37,6 +37,9 @@ public class AuthController {
     @Autowired
     private MobileTokenService mobileTokenService;
 
+    @Autowired
+    private LoginThrottle loginThrottle;
+
     /**
      * Login endpoint - creates a session
      */
@@ -51,14 +54,25 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Username and password required");
         }
 
+        // Slow down password guessing: repeated failures from one address make the next attempt wait
+        String clientIp = ClientIp.of(request);
+        long wait = loginThrottle.secondsToWait(clientIp, username);
+        if (wait > 0) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(wait))
+                .body("Too many failed attempts. Try again in " + wait + " seconds.");
+        }
+
         try {
             // Authenticate user
             Player player = playerManagerService.authenticatePlayer(username, password);
             
             if (player == null) {
+                loginThrottle.recordFailure(clientIp, username);
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body("Invalid username or password");
             }
+            loginThrottle.recordSuccess(clientIp, username);
 
             // Create session
             HttpSession session = request.getSession(true);
@@ -80,7 +94,7 @@ public class AuthController {
             // If "remember me" was checked, issue a persistent cookie
             if (rememberMe) {
                 String rawToken = rememberMeManagerService.createToken(player.getId());
-                addRememberMeCookie(response, rawToken);
+                addRememberMeCookie(request, response, rawToken);
             }
 
             // Native app: the session cookie can't be sent from the WebView's local
@@ -95,7 +109,7 @@ public class AuthController {
             System.err.println("Login error: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Login failed: " + e.getMessage());
+                .body("Login failed. Please try again.");
         }
     }
 
@@ -169,7 +183,7 @@ public class AuthController {
                     rememberMeManagerService.validateAndRotate(rawToken);
                 if (result != null) {
                     userId = result.userId();
-                    addRememberMeCookie(response, result.newRawToken());
+                    addRememberMeCookie(request, response, result.newRawToken());
                     // Re-create the session from the remember-me token
                     session = request.getSession(true);
                     Player remembered = playerManagerService.getPlayerById(userId);
@@ -180,11 +194,11 @@ public class AuthController {
                     } else {
                         // User was deleted — clear the token
                         rememberMeManagerService.clearTokens(userId);
-                        clearRememberMeCookie(response);
+                        clearRememberMeCookie(request, response);
                         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                     }
                 } else {
-                    clearRememberMeCookie(response);
+                    clearRememberMeCookie(request, response);
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                 }
             }
@@ -228,7 +242,7 @@ public class AuthController {
                 }
                 session.invalidate();
             }
-            clearRememberMeCookie(response);
+            clearRememberMeCookie(request, response);
             return ResponseEntity.ok(Map.of("success", true, "message", "Logged out successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -236,19 +250,19 @@ public class AuthController {
         }
     }
 
-    private void addRememberMeCookie(HttpServletResponse response, String rawToken) {
+    private void addRememberMeCookie(HttpServletRequest request, HttpServletResponse response, String rawToken) {
         Cookie cookie = new Cookie(COOKIE_NAME, rawToken);
         cookie.setHttpOnly(true);
-        cookie.setSecure(false);
+        cookie.setSecure(ClientIp.isHttps(request));
         cookie.setPath("/");
         cookie.setMaxAge(COOKIE_MAX_AGE);
         response.addCookie(cookie);
     }
 
-    private void clearRememberMeCookie(HttpServletResponse response) {
+    private void clearRememberMeCookie(HttpServletRequest request, HttpServletResponse response) {
         Cookie cookie = new Cookie(COOKIE_NAME, "");
         cookie.setHttpOnly(true);
-        cookie.setSecure(false);
+        cookie.setSecure(ClientIp.isHttps(request));
         cookie.setPath("/");
         cookie.setMaxAge(0);
         response.addCookie(cookie);

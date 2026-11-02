@@ -105,6 +105,22 @@ class IdentityGuardTest {
     }
 
     @Test
+    void onlyTheTwoLiveStreamChannelsAreAccepted() throws Exception {
+        MockMvc channels = MockMvcBuilders.standaloneSetup(new Stub())
+                .addInterceptors(new IdentityGuard.ChannelInterceptor()).build();
+        channels.perform(post("/api/livestream/skip").param("channel", "music").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":5}"))
+                .andExpect(status().isOk());
+        channels.perform(post("/api/livestream/skip").param("channel", "video").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":5}"))
+                .andExpect(status().isOk());
+        channels.perform(post("/api/livestream/skip").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":5}"))
+                .andExpect(status().isOk());
+        channels.perform(post("/api/livestream/skip").param("channel", "x' OR '1'='1").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":5}"))
+                .andExpect(status().isBadRequest());
+        channels.perform(post("/api/livestream/skip").param("channel", "podcast").contentType(MediaType.APPLICATION_JSON).content("{\"userId\":5}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void usernameCheckIsCaseInsensitiveAndSelfOnly() {
         signInAs(5);
         org.junit.jupiter.api.Assertions.assertFalse(LexiconPrincipal.impersonatesName("Tester"));

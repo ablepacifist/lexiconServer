@@ -65,6 +65,7 @@ class MobileTokenAuthFilterTest {
         ReflectionTestUtils.setField(controller, "playerManagerService", playerManagerService);
         ReflectionTestUtils.setField(controller, "rememberMeManagerService", rememberMe);
         ReflectionTestUtils.setField(controller, "mobileTokenService", mobileTokenService);
+        ReflectionTestUtils.setField(controller, "loginThrottle", new LoginThrottle());
 
         MobileTokenAuthFilter filter =
                 new MobileTokenAuthFilter(mobileTokenService, playerManagerService);

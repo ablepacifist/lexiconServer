@@ -61,6 +61,22 @@ public final class IdentityGuard {
         }
     }
 
+    /** The live stream has exactly two channels; anything else is a bad request instead of a new junk channel. */
+    public static class ChannelInterceptor implements HandlerInterceptor {
+        @Override
+        public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+                throws IOException {
+            String channel = request.getParameter("channel");
+            if (channel != null && !"music".equals(channel) && !"video".equals(channel)) {
+                response.setStatus(HttpStatus.BAD_REQUEST.value());
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Unknown channel\"}");
+                return false;
+            }
+            return true;
+        }
+    }
+
     @ControllerAdvice
     public static class BodyAdvice extends RequestBodyAdviceAdapter {
         @Override
@@ -84,6 +100,7 @@ public final class IdentityGuard {
         @Override
         public void addInterceptors(InterceptorRegistry registry) {
             registry.addInterceptor(new Interceptor()).addPathPatterns("/api/**");
+            registry.addInterceptor(new ChannelInterceptor()).addPathPatterns("/api/livestream/**");
         }
     }
 }
