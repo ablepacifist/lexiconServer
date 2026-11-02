@@ -163,12 +163,16 @@ class OptimizedFileStorageServiceTest {
             storageService.getFileForStreaming(relativePath, rangeStart, rangeEnd);
         
         assertNotNull(streamInfo);
-        assertEquals(100L, streamInfo.getContentLength());
-        assertEquals(rangeStart, streamInfo.getRangeStart());
-        assertEquals(rangeEnd, streamInfo.getRangeEnd());
-        
-        // Verify we can read the range
-        assertNotNull(streamInfo.getFile());
+        // The caller owns the open file: close it, or Windows cannot delete the temp folder afterwards
+        try (java.io.RandomAccessFile file = streamInfo.getFile()) {
+            assertEquals(100L, streamInfo.getContentLength());
+            assertEquals(rangeStart, streamInfo.getRangeStart());
+            assertEquals(rangeEnd, streamInfo.getRangeEnd());
+
+            // Verify we can read the range
+            assertNotNull(file);
+            assertEquals(rangeStart, file.getFilePointer());
+        }
     }
 
     @Test
@@ -300,8 +304,8 @@ class OptimizedFileStorageServiceTest {
         assertNotNull(relativePath);
         assertTrue(storageService.fileExists(relativePath));
         
-        // Verify filename doesn't contain problematic characters
-        String filename = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+        // Verify filename doesn't contain problematic characters (the relative path uses the OS separator)
+        String filename = java.nio.file.Paths.get(relativePath).getFileName().toString();
         assertFalse(filename.contains("/"));
         assertFalse(filename.contains("\\"));
         assertFalse(filename.contains("|"));

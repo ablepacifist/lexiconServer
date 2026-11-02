@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 public class YtDlpService {
 
     @Value("${ytdlp.cookies.path:cookies.txt}")
-    private String cookiesPath;
+    private String cookiesPath = "cookies.txt"; // Spring overrides this from ytdlp.cookies.path; keep a safe default for direct construction
     
     public enum DownloadType {
         AUDIO_ONLY,
@@ -55,7 +55,7 @@ public class YtDlpService {
         
         // Only public http(s) URLs: not file://, not "--option" look-alikes, not this server's own network
         try {
-            UrlSafety.requirePublicHttpUrl(url);
+            validateUrl(url);
         } catch (IllegalArgumentException e) {
             return new DownloadResult(false, null, null, null, e.getMessage());
         }
@@ -140,9 +140,7 @@ public class YtDlpService {
         command.add(url);
         
         try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
+            Process process = startProcess(command);
             
             // Capture output
             StringBuilder output = new StringBuilder();
@@ -195,10 +193,22 @@ public class YtDlpService {
         }
     }
     
+    /** Seam for tests: the URL policy (public http(s) only). */
+    void validateUrl(String url) {
+        UrlSafety.requirePublicHttpUrl(url);
+    }
+
+    /** Seam for tests: starts yt-dlp with stderr merged into stdout. */
+    Process startProcess(List<String> command) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.redirectErrorStream(true);
+        return pb.start();
+    }
+
     /**
      * Check if yt-dlp is installed and accessible
      */
-    private boolean isYtDlpInstalled() {
+    boolean isYtDlpInstalled() {
         try {
             Process process = new ProcessBuilder("yt-dlp", "--version").start();
             process.waitFor(5, TimeUnit.SECONDS);

@@ -16,36 +16,24 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests the mobile bearer-token lifecycle used by the Android app.
  *
- * Runs against an in-memory HSQLDB rather than the shared database, so it never
+ * Runs against the private in-memory HSQLDB that build.gradle selects for all tests, so it never
  * touches live data.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MobileTokenManagerTest {
 
-    private static final String TEST_DB_URL = "jdbc:hsqldb:mem:mobiletokentest";
+    // The database the code under test uses: build.gradle pins it to a private in-memory HSQLDB for every test
+    private static final String TEST_DB_URL = lexicon.utils.DatabaseConfig.url();
     private static final int TEST_USER_ID = 4242;
 
-    private String previousDbUrl;
     private HSQLMobileTokenDatabase database;
     private MobileTokenManager manager;
 
     @BeforeAll
     void setup() {
-        previousDbUrl = System.getProperty("database.url");
-        System.setProperty("database.url", TEST_DB_URL);
-
         database = new HSQLMobileTokenDatabase();
         database.initializeSchema();
         manager = new MobileTokenManager(database);
-    }
-
-    @AfterAll
-    void restore() {
-        if (previousDbUrl == null) {
-            System.clearProperty("database.url");
-        } else {
-            System.setProperty("database.url", previousDbUrl);
-        }
     }
 
     @BeforeEach

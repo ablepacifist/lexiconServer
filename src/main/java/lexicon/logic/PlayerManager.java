@@ -90,7 +90,7 @@ public class PlayerManager implements PlayerManagerService {
             return null;
         }
         if (isBcryptHash(storedPassword)) {
-            return passwordEncoder.matches(password, storedPassword) ? player : null;
+            return passwordEncoder.matches(password, storedPassword) ? recordLogin(player) : null;
         }
 
         boolean legacyMatch = MessageDigest.isEqual(
@@ -103,8 +103,20 @@ public class PlayerManager implements PlayerManagerService {
         String upgraded = passwordEncoder.encode(password);
         database.updatePlayerPassword(player.getId(), upgraded);
         System.out.println("Upgraded stored password to a BCrypt hash for player id " + player.getId());
-        return new Player(player.getId(), player.getUsername(), upgraded, player.getLevel(),
-                player.getEmail(), player.getDisplayName(), player.getRegistrationDate(), player.getLastLoginDate());
+        return recordLogin(new Player(player.getId(), player.getUsername(), upgraded, player.getLevel(),
+                player.getEmail(), player.getDisplayName(), player.getRegistrationDate(), player.getLastLoginDate()));
+    }
+
+    /** Stamps the sign-in time. Best effort: failing to record it must never stop someone logging in. */
+    private Player recordLogin(Player player) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        try {
+            database.updatePlayerLastLogin(player.getId(), now);
+        } catch (Exception e) {
+            System.err.println("Could not record last login for player id " + player.getId() + ": " + e.getMessage());
+        }
+        return new Player(player.getId(), player.getUsername(), player.getPassword(), player.getLevel(),
+                player.getEmail(), player.getDisplayName(), player.getRegistrationDate(), now);
     }
     
     private static boolean isBcryptHash(String stored) {
