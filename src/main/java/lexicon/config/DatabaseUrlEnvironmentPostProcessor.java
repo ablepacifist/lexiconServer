@@ -33,6 +33,12 @@ public class DatabaseUrlEnvironmentPostProcessor implements EnvironmentPostProce
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         // A real system property (e.g. -DDATABASE_URL=...) already wins over
         // everything else; never clobber it.
+        if (System.getProperty("DATABASE_PASSWORD") == null) {
+            String password = environment.getProperty("DATABASE_PASSWORD");
+            if (password != null) {
+                System.setProperty("DATABASE_PASSWORD", password);
+            }
+        }
         if (System.getProperty("DATABASE_URL") != null) {
             return;
         }

@@ -83,7 +83,17 @@ public class ChunkedUploadServiceTest {
     }
     
     @AfterEach
-    void tearDown() {
+    void tearDown() throws InterruptedException {
+        // The service assembles a finished upload on a background thread. Let it finish before the temp folder is
+        // removed, or Windows refuses to delete the file it still has open.
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, ChunkedUpload> active =
+                (java.util.Map<String, ChunkedUpload>) org.springframework.test.util.ReflectionTestUtils.getField(service, "activeUploads");
+        long giveUp = System.currentTimeMillis() + 30_000;
+        while (active != null && active.values().stream().anyMatch(u -> u.getStatus() == ChunkedUploadStatus.ASSEMBLING)
+                && System.currentTimeMillis() < giveUp) {
+            Thread.sleep(100);
+        }
         // Clean up all files in temp directory to prevent TempDirectory cleanup failures
         try {
             if (tempDir != null && Files.exists(tempDir)) {

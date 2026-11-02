@@ -31,11 +31,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MobileTokenAuthFilterTest {
 
-    private static final String TEST_DB_URL = "jdbc:hsqldb:mem:mobilefiltertest";
     private static final int USER_ID = 777;
     private static final String USERNAME = "mobiletester";
 
-    private String previousDbUrl;
     private MockMvc mvc;
     private HSQLMobileTokenDatabase database;
     private MobileTokenService mobileTokenService;
@@ -43,9 +41,6 @@ class MobileTokenAuthFilterTest {
 
     @BeforeAll
     void setup() {
-        previousDbUrl = System.getProperty("database.url");
-        System.setProperty("database.url", TEST_DB_URL);
-
         database = new HSQLMobileTokenDatabase();
         database.initializeSchema();
         mobileTokenService = new MobileTokenManager(database);
@@ -65,20 +60,12 @@ class MobileTokenAuthFilterTest {
         ReflectionTestUtils.setField(controller, "playerManagerService", playerManagerService);
         ReflectionTestUtils.setField(controller, "rememberMeManagerService", rememberMe);
         ReflectionTestUtils.setField(controller, "mobileTokenService", mobileTokenService);
+        ReflectionTestUtils.setField(controller, "loginThrottle", new LoginThrottle());
 
         MobileTokenAuthFilter filter =
                 new MobileTokenAuthFilter(mobileTokenService, playerManagerService);
 
         mvc = MockMvcBuilders.standaloneSetup(controller).addFilters(filter).build();
-    }
-
-    @AfterAll
-    void restore() {
-        if (previousDbUrl == null) {
-            System.clearProperty("database.url");
-        } else {
-            System.setProperty("database.url", previousDbUrl);
-        }
     }
 
     @BeforeEach

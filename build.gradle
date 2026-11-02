@@ -1,6 +1,6 @@
 plugins {
-    id 'org.springframework.boot' version '3.1.4'
-    id 'io.spring.dependency-management' version '1.1.0'
+    id 'org.springframework.boot' version '3.5.16'
+    id 'io.spring.dependency-management' version '1.1.7'
     id 'java'
     id 'jacoco'
 }
@@ -46,10 +46,17 @@ test {
     
     // Add timeout to prevent stuck tests
     systemProperty 'junit.jupiter.execution.timeout.default', '30s'
-    
-    // Exclude problematic integration tests that hang (SpringBootTest tests)
-    exclude '**/PlaylistManagerTest.class'
-    exclude '**/PlayerManagerTest.class'
+
+    // Tests must NEVER touch a real database, the live media store or the live .env: they run against a private
+    // in-memory HSQLDB (schema created by lexicon.utils.TestDatabaseBootstrap), a scratch storage folder, and
+    // ignore the monorepo's root .env. System properties win over every other source (see DatabaseConfig).
+    systemProperty 'DATABASE_URL', 'jdbc:hsqldb:mem:lexicontest'
+    systemProperty 'DATABASE_PASSWORD', ''
+    environment 'MASTER_ENV_FILE', "${buildDir}/no-such-root.env"
+    environment 'LEXICON_STORAGE_BASE_PATH', "${buildDir}/test-storage"
+    environment 'UPLOAD_DIR', "${buildDir}/test-storage/uploads"
+    environment 'VAPID_PUBLIC_KEY', ''
+    environment 'VAPID_PRIVATE_KEY', ''
 }
 
 jacoco {

@@ -39,4 +39,18 @@ public final class DatabaseConfig {
         }
         return DEFAULT_URL;
     }
+
+    /**
+     * Password for the HSQLDB "SA" user, resolved the same way as the URL
+     * (system property, then environment variable). Empty when unset, which
+     * matches an HSQLDB server that has not had a password configured yet.
+     */
+    public static String password() {
+        String systemProperty = System.getProperty("DATABASE_PASSWORD");
+        if (systemProperty != null) {
+            return systemProperty;
+        }
+        String env = System.getenv("DATABASE_PASSWORD");
+        return env != null ? env : "";
+    }
 }

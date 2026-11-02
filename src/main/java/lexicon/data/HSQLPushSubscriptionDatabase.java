@@ -21,6 +21,7 @@ public class HSQLPushSubscriptionDatabase implements IPushSubscriptionDatabase {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(DATABASE_URL);
         config.setUsername("SA");
+        config.setPassword(DatabaseConfig.password());
         config.setPassword("");
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);

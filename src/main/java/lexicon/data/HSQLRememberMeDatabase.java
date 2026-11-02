@@ -16,7 +16,7 @@ public class HSQLRememberMeDatabase implements IRememberMeDatabase {
     private final String DATABASE_URL = DatabaseConfig.url();
 
     private Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(DATABASE_URL, "SA", "");
+        return DriverManager.getConnection(DATABASE_URL, "SA", DatabaseConfig.password());
     }
 
     @Override

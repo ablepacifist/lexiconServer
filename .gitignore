@@ -94,3 +94,6 @@ application-prod.properties
 # YouTube cookies (sensitive authentication data)
 *cookies.txt
 youtube_cookies.txt
+
+# Stray folder created when an upload path value is missing
+null/

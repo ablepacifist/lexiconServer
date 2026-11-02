@@ -30,10 +30,27 @@ public class AvatarProxyController {
     @Value("${bridge.base-url}")
     private String bridgeBaseUrl;
 
+    /**
+     * Shared secret the bridge accepts from this server on the avatar upload/remove routes. By the time a request is
+     * forwarded, the caller has been checked against the signed-in player, so the bridge is told to trust the name.
+     */
+    @Value("${lexicon.service-token:}")
+    private String serviceToken;
+
     private final RestTemplate restTemplate;
 
     public AvatarProxyController() {
         this.restTemplate = new RestTemplate();
+    }
+
+    /** Headers for calls that change something on the bridge: the content type plus the shared service token. */
+    private HttpHeaders bridgeHeaders(MediaType contentType) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(contentType);
+        if (serviceToken != null && !serviceToken.isBlank()) {
+            headers.set("X-Service-Token", serviceToken);
+        }
+        return headers;
     }
 
     /**
@@ -77,11 +94,14 @@ public class AvatarProxyController {
             @RequestParam("username") String username,
             @RequestParam(value = "userId", required = false) Integer userId,
             @RequestParam("avatar") MultipartFile avatarFile) {
+        if (LexiconPrincipal.impersonatesName(username)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", "You can only change your own avatar"));
+        }
         try {
             String url = bridgeBaseUrl + "/api/avatar/upload";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            HttpHeaders headers = bridgeHeaders(MediaType.MULTIPART_FORM_DATA);
 
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             body.add("username", username);
@@ -129,11 +149,15 @@ public class AvatarProxyController {
      */
     @PostMapping("/remove")
     public ResponseEntity<Map<String, Object>> removeAvatar(@RequestBody Map<String, Object> payload) {
+        Object target = payload.get("username");
+        if (target != null && LexiconPrincipal.impersonatesName(target.toString())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", "You can only change your own avatar"));
+        }
         try {
             String url = bridgeBaseUrl + "/api/avatar/remove";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = bridgeHeaders(MediaType.APPLICATION_JSON);
 
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, headers);
             ResponseEntity<Map> bridgeResponse = restTemplate.postForEntity(url, requestEntity, Map.class);

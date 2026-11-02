@@ -69,6 +69,15 @@ public class MockLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
+    public void updatePlayerPassword(int playerId, String hashedPassword) {
+        Player old = players.get(playerId);
+        if (old != null) {
+            players.put(playerId, new Player(old.getId(), old.getUsername(), hashedPassword, old.getLevel(),
+                    old.getEmail(), old.getDisplayName(), old.getRegistrationDate(), old.getLastLoginDate()));
+        }
+    }
+
+    @Override
     public boolean playerExists(String username) {
         return getPlayerByUsername(username) != null;
     }

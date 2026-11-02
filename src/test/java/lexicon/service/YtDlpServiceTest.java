@@ -18,13 +18,49 @@ import static org.junit.jupiter.api.Assertions.*;
 class YtDlpServiceTest {
     
     private YtDlpService ytDlpService;
+
+    /**
+     * yt-dlp is never started and the network is never touched: the service pretends yt-dlp is installed, accepts
+     * any well-formed http(s) URL without a DNS lookup, and records the command it would have run before failing
+     * the launch the way a missing or broken executable would.
+     */
+    private static class OfflineYtDlpService extends YtDlpService {
+        final java.util.List<java.util.List<String>> launched = new java.util.ArrayList<>();
+
+        @Override
+        boolean isYtDlpInstalled() {
+            return true;
+        }
+
+        @Override
+        void validateUrl(String url) {
+            if (url == null || url.isBlank()) {
+                throw new IllegalArgumentException("URL cannot be empty");
+            }
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                throw new IllegalArgumentException("Invalid URL format. Must start with http:// or https://");
+            }
+        }
+
+        @Override
+        Process startProcess(java.util.List<String> command) throws java.io.IOException {
+            launched.add(new java.util.ArrayList<>(command));
+            throw new java.io.IOException("yt-dlp is not started in unit tests");
+        }
+    }
+
+    private java.util.List<String> lastCommand() {
+        java.util.List<java.util.List<String>> all = ((OfflineYtDlpService) ytDlpService).launched;
+        assertFalse(all.isEmpty(), "yt-dlp should have been launched");
+        return all.get(all.size() - 1);
+    }
     
     @TempDir
     Path tempDir;
     
     @BeforeEach
     void setUp() {
-        ytDlpService = new YtDlpService();
+        ytDlpService = new OfflineYtDlpService();
     }
     
     @Test
@@ -310,6 +346,85 @@ class YtDlpServiceTest {
         // Assert - Directory should be created (even if download fails)
         assertTrue(java.nio.file.Files.exists(newDir));
         assertTrue(java.nio.file.Files.isDirectory(newDir));
+    }
+
+    @Test
+    void theUrlIsAlwaysTheLastArgumentAfterADoubleDash() {
+        ytDlpService.downloadFromUrl("https://example.org/watch?v=abc", YtDlpService.DownloadType.AUDIO_ONLY, tempDir.toString());
+
+        java.util.List<String> cmd = lastCommand();
+        assertEquals("https://example.org/watch?v=abc", cmd.get(cmd.size() - 1));
+        assertEquals("--", cmd.get(cmd.size() - 2), "everything after -- is a URL, never an option");
+    }
+
+    @Test
+    void anExistingCookiesFileIsPassedToYtDlp() throws Exception {
+        File cookies = tempDir.resolve("c.txt").toFile();
+        Files.write(cookies.toPath(), "# Netscape HTTP Cookie File".getBytes());
+        ReflectionTestUtils.setField(ytDlpService, "cookiesPath", cookies.getAbsolutePath());
+
+        ytDlpService.downloadFromUrl("https://example.org/v", YtDlpService.DownloadType.VIDEO, tempDir.toString());
+
+        java.util.List<String> cmd = lastCommand();
+        int i = cmd.indexOf("--cookies");
+        assertTrue(i >= 0, cmd.toString());
+        assertEquals(cookies.getAbsolutePath(), cmd.get(i + 1));
+    }
+
+    @Test
+    void withoutACookiesFileTheBrowserCookiesAreUsed() {
+        ReflectionTestUtils.setField(ytDlpService, "cookiesPath", "/nonexistent/cookies.txt");
+
+        ytDlpService.downloadFromUrl("https://example.org/v", YtDlpService.DownloadType.VIDEO, tempDir.toString());
+
+        assertTrue(lastCommand().contains("--cookies-from-browser"));
+    }
+
+    @Test
+    void audioOnlyAsksForMp3AndVideoDoesNot() {
+        ytDlpService.downloadFromUrl("https://example.org/a", YtDlpService.DownloadType.AUDIO_ONLY, tempDir.toString());
+        assertTrue(lastCommand().contains("-x"));
+        ytDlpService.downloadFromUrl("https://example.org/v", YtDlpService.DownloadType.VIDEO, tempDir.toString());
+        assertFalse(lastCommand().contains("-x"));
+    }
+
+    @Test
+    void aMissingYtDlpIsReportedClearly() {
+        YtDlpService notInstalled = new YtDlpService() {
+            @Override
+            boolean isYtDlpInstalled() {
+                return false;
+            }
+
+            @Override
+            void validateUrl(String url) {
+            }
+        };
+
+        YtDlpService.DownloadResult r = notInstalled.downloadFromUrl("https://example.org/a", YtDlpService.DownloadType.VIDEO, tempDir.toString());
+
+        assertFalse(r.isSuccess());
+        assertTrue(r.getErrorMessage().contains("not installed"));
+    }
+
+    @Test
+    void theRealUrlPolicyRefusesLocalTargetsAndOptionLookalikes() {
+        YtDlpService real = new YtDlpService() {
+            @Override
+            boolean isYtDlpInstalled() {
+                return true;
+            }
+
+            @Override
+            Process startProcess(java.util.List<String> command) {
+                fail("must not start yt-dlp for a refused URL");
+                return null;
+            }
+        };
+        for (String bad : new String[]{"--exec=calc.exe", "file:///etc/passwd", "http://127.0.0.1:8080/x", "http://192.168.1.4/x"}) {
+            YtDlpService.DownloadResult r = real.downloadFromUrl(bad, YtDlpService.DownloadType.VIDEO, tempDir.toString());
+            assertFalse(r.isSuccess(), bad);
+        }
     }
 }
 
