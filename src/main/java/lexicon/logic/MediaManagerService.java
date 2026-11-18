@@ -82,4 +82,16 @@ public interface MediaManagerService {
      */
     MediaFile uploadMediaFromFile(java.io.File file, int userId, String title, String description, 
                                   boolean isPublic, String mediaType, String sourceUrl);
+
+    /**
+     * Register a file that is ALREADY on the storage volume, by hard-linking it into the
+     * media layout instead of copying it (used by the torrent downloader, where qBittorrent
+     * keeps its own name for the same bytes so it can go on seeding).
+     */
+    ImportedMedia importLinkedFile(java.nio.file.Path source, int userId, String title, String description,
+                                   boolean isPublic, String mediaType, String sourceUrl);
+
+    /** The registered media file, and whether the hard link was made (false = it was moved). */
+    record ImportedMedia(MediaFile mediaFile, boolean hardLinked) {
+    }
 }

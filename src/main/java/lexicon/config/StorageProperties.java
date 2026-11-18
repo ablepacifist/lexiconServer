@@ -21,6 +21,13 @@ public class StorageProperties {
     private String backupsPath;
     private List<String> additionalPaths = new ArrayList<>();
 
+    /**
+     * The WSL distro that holds the storage volume. The volume is ext4 and visible only
+     * inside WSL, so operations Windows cannot do on the \\wsl.localhost share (creating a
+     * hard link, reading the real disk usage) are run through this distro instead.
+     */
+    private String wslDistro = "Ubuntu";
+
     // File size thresholds
     private long smallFileThreshold = 10 * 1024 * 1024;  // 10MB
     private long largeFileThreshold = 100 * 1024 * 1024; // 100MB
@@ -32,6 +39,9 @@ public class StorageProperties {
     private long cacheSize = 512 * 1024 * 1024; // 512MB cache
     
     // Getters and setters
+    public String getWslDistro() { return wslDistro; }
+    public void setWslDistro(String wslDistro) { this.wslDistro = wslDistro; }
+
     public String getBasePath() { return basePath; }
     public void setBasePath(String basePath) { this.basePath = basePath; }
     

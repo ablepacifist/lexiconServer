@@ -174,6 +174,115 @@ public class OptimizedFileStorageService {
     }
     
     /**
+     * Place an existing file that is ALREADY on the storage volume into its proper media
+     * directory by hard-linking it, and return the relative path the database should hold.
+     *
+     * This exists for torrent downloads: qBittorrent must keep its own copy at its own path
+     * to go on seeding, while Lexicon needs the file under its media layout. A hard link
+     * gives both — one set of bytes, two names — so importing a finished torrent costs no
+     * disk and no copy time.
+     *
+     * The link is made by `ln` inside WSL rather than with {@link Files#createLink}: the
+     * volume is ext4 and visible only inside WSL, reached from Windows over a
+     * \\wsl.localhost 9P share that does not support creating hard links.
+     *
+     * Falls back to a move when linking fails (same volume, so still a rename rather than a
+     * copy). The caller is told which happened, because a move means the torrent loses its
+     * data and stops seeding.
+     *
+     * @param source absolute path of the existing file, on the storage volume
+     * @return where the file ended up, and whether seeding survived
+     */
+    public LinkResult linkFileIntoStorage(Path source, String originalFilename, long fileSize,
+                                          MediaType mediaType) throws IOException {
+        String storagePath = storageProperties.getStoragePathForMedia(mediaType.name(), fileSize);
+        Path storageDir = Paths.get(storagePath);
+        Files.createDirectories(storageDir);
+
+        // Same naming as storeFileFromStream, so torrent imports are indistinguishable from
+        // uploads once they are in the library.
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8);
+        String extension = getFileExtension(originalFilename);
+        String cleanName = sanitizeFilename(originalFilename.replace(extension, ""));
+        Path target = storageDir.resolve(String.format("%s_%s_%s%s", timestamp, uniqueId, cleanName, extension));
+
+        boolean linked = wslHardLink(source, target);
+        if (!linked) {
+            // A move keeps the import working; the torrent will then be reported as missing
+            // files by qBittorrent, which the caller surfaces rather than hiding.
+            Files.move(source, target);
+        }
+
+        Path basePath = Paths.get(storageProperties.getBasePath());
+        return new LinkResult(basePath.relativize(target).toString(), linked);
+    }
+
+    /** Where an imported file landed, and whether the torrent can still seed it. */
+    public record LinkResult(String relativePath, boolean hardLinked) {
+    }
+
+    /** True when the link was created. Never throws: the caller has a fallback. */
+    private boolean wslHardLink(Path source, Path target) {
+        String linuxSource = toWslPath(source);
+        String linuxTarget = toWslPath(target);
+        if (linuxSource == null || linuxTarget == null) {
+            return false;
+        }
+        try {
+            Process process = new ProcessBuilder(
+                    "wsl.exe", "-d", storageProperties.getWslDistro(), "--",
+                    "ln", linuxSource, linuxTarget)
+                    .redirectErrorStream(true)
+                    .start();
+            if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return false;
+            }
+            if (process.exitValue() != 0) {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    System.err.println("Hard link failed: " + reader.lines().collect(java.util.stream.Collectors.joining(" ")));
+                }
+                return false;
+            }
+            return Files.exists(target);
+        } catch (IOException e) {
+            System.err.println("Could not run wsl.exe to hard link: " + e.getMessage());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Translates a Windows path on the storage volume into the path WSL sees, so `ln` can be
+     * handed both ends of the link. Returns null for anything that is not on a path WSL can
+     * reach, which makes the caller fall back to a move.
+     */
+    static String toWslPath(Path path) {
+        String text = path.toAbsolutePath().toString().replace('\\', '/');
+        String marker = "//wsl.localhost/";
+        if (text.toLowerCase().startsWith(marker)) {
+            // //wsl.localhost/Ubuntu/mnt/... -> /mnt/...
+            int afterDistro = text.indexOf('/', marker.length());
+            if (afterDistro < 0) {
+                return null;
+            }
+            String inside = text.substring(afterDistro);
+            // Java normalises a bare \\host\share to a trailing separator, which would
+            // leave "/" — the whole distro — as the answer. Nothing may be linked there.
+            return inside.equals("/") ? null : inside;
+        }
+        if (text.length() > 2 && text.charAt(1) == ':') {
+            // C:/x -> /mnt/c/x. Not the storage volume, but harmless to support.
+            return "/mnt/" + Character.toLowerCase(text.charAt(0)) + text.substring(2);
+        }
+        return null;
+    }
+
+    /**
      * Delete file from storage
      */
     public boolean deleteFile(String relativePath) {
