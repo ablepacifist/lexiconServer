@@ -24,11 +24,12 @@ import java.util.stream.Collectors;
  * Talks to qBittorrent's WebUI API on this machine.
  *
  * qBittorrent is bound to the Proton VPN tunnel address (split tunnel, "Include only"
- * mode), and Proton deliberately has no machine-wide kill switch here — a full tunnel would
- * take the website, the APIs and RustDesk down with it. The binding is what keeps the real
- * IP off the trackers, so {@link #health()} refuses to report healthy unless qBittorrent is
- * actually bound to the live tunnel address. Nothing in this class ever launches
- * qBittorrent: it must be started by hand, after the VPN is up.
+ * mode). Proton's kill switch covers the tunnel, but split tunnelling means it only governs
+ * the apps inside the tunnel — a machine-wide one would take the website, the APIs and
+ * RustDesk down with it. So the binding is still what keeps the real IP off the trackers,
+ * and {@link #health(String)} refuses to report healthy unless qBittorrent is actually bound
+ * to the live tunnel address. Nothing in this class ever launches qBittorrent: it must be
+ * started by hand, after the VPN is up.
  *
  * The WebUI listens on loopback only and is never proxied, so the credentials below never
  * leave this machine.
@@ -91,9 +92,13 @@ public class QBittorrentClient {
         }
         String boundAddress;
         try {
-            boundAddress = preferences().path("current_network_interface_address").asText("");
+            // One fetch, not two: qBittorrent 5.3 leaves current_network_interface_address
+            // empty and puts the bound address in current_interface_address, so reading the
+            // preferences twice meant a second round trip on every single poll.
+            JsonNode preferences = preferences();
+            boundAddress = preferences.path("current_network_interface_address").asText("");
             if (boundAddress.isBlank()) {
-                boundAddress = preferences().path("current_interface_address").asText("");
+                boundAddress = preferences.path("current_interface_address").asText("");
             }
         } catch (Exception e) {
             return new Health(false, false, "",
