@@ -162,6 +162,43 @@ This interactive script will:
 
 ## API Endpoints
 
+### Read-only 3D printer monitor
+
+The website's printer monitor uses the authenticated Lexicon API to reach
+OctoPrint and the MJPEG webcam on the LAN. All signed-in Lexicon users can
+view the feed and job details, including newly registered users. No printer
+commands are exposed by this integration.
+
+1. Obtain an OctoPrint API key. A dedicated user key with only `STATUS`
+   permission is preferable if available in your OctoPrint setup. The global
+   API key also works, but has administrator-level access, so protect it as
+   carefully as an administrator password. See the [OctoPrint API authentication
+   documentation](https://docs.octoprint.org/en/main/api/general.html#authorization).
+2. Set the following in the server's private `.env` or process environment,
+   using the actual Pi address. The monorepo root `.env` overrides this
+   module's `.env`. Never commit the key or put it in frontend configuration.
+
+   ```properties
+   OCTOPRINT_URL=http://192.168.1.8:5000
+   PRINTER_CAMERA_URL=http://192.168.1.8:8080/stream
+   OCTOPRINT_API_KEY=<read-only-user-api-key>
+   ```
+
+3. Restart the Lexicon backend and deploy the updated website. Sign in and
+   open **Projects > 3D Printer**. Verify from the home network and
+   from a remote network using the public HTTPS site. The backend host needs
+   LAN connectivity to both Pi ports; the browser talks only to Lexicon.
+
+`GET /api/printer-monitor/status` and `GET /api/printer-monitor/camera` require
+a signed-in Lexicon user. A 503 indicates missing configuration, a rejected
+key, an unreachable Pi, or an unavailable webcam. An OctoPrint 409 for printer
+state means the printer is not operational, not necessarily that the Pi is
+offline. The camera relay uses one streaming connection per viewer; network or
+tunnel timeouts may interrupt it, in which case use **Retry camera**. Check
+that the Pi address has not changed and that the `octoprint` and `webcam`
+services are running. The Pi's webcam itself is not protected by OctoPrint:
+keep its port and the OctoPrint port off the public internet.
+
 ### Health & Info
 - `GET /api/health` - Service health check
 - `GET /api/info` - Service information

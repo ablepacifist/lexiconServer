@@ -36,6 +36,7 @@ public final class IdentityGuard {
     /** Reads that return one player's private data; other GETs (browsing public media and playlists) are not restricted. */
     private static boolean isPrivateRead(String path) {
         return path.startsWith("/api/playback/") || path.startsWith("/api/download-queue/active/")
+                || path.startsWith("/api/torrents/active/")
                 || path.startsWith("/api/notifications");
     }
 

@@ -36,7 +36,27 @@ public class MediaManager implements MediaManagerService {
     private final YtDlpService ytDlpService;
     private final VideoTranscodingService transcodingService;
     private final OptimizedFileStorageService fileStorageService;
-    
+
+    /**
+     * Set by the torrent downloader so a media delete can also delete the torrent. Left null
+     * when that feature is not configured, and injected by setter rather than constructor
+     * because the dependency runs the other way too (the downloader imports through here).
+     */
+    private TorrentCleanup torrentCleanup;
+
+    /**
+     * What a media delete has to tell the torrent side. Implemented by
+     * {@code TorrentDownloadService}; kept as an interface here so this class does not
+     * depend on the service package.
+     */
+    public interface TorrentCleanup {
+        void onMediaDeleted(MediaFile mediaFile);
+    }
+
+    public void setTorrentCleanup(TorrentCleanup torrentCleanup) {
+        this.torrentCleanup = torrentCleanup;
+    }
+
     @Autowired
     public MediaManager(ILexiconDatabase playerDatabase, IMediaDatabase mediaDatabase, 
                        YtDlpService ytDlpService, VideoTranscodingService transcodingService,
@@ -297,6 +317,13 @@ public class MediaManager implements MediaManagerService {
             return false;
         }
         
+        // A torrent-imported file has a second name in qBittorrent's save path; the hook
+        // removes that too, and removes the torrent itself once its last file is gone. For
+        // an ordinary upload this does nothing.
+        if (torrentCleanup != null) {
+            torrentCleanup.onMediaDeleted(mediaFile);
+        }
+
         mediaDatabase.deleteMediaFile(mediaFileId);
         return true;
     }
@@ -615,6 +642,51 @@ public class MediaManager implements MediaManagerService {
         }
     }
     
+    @Override
+    public ImportedMedia importLinkedFile(Path source, int userId, String title, String description,
+                                          boolean isPublic, String mediaType, String sourceUrl) {
+        if (source == null || !Files.exists(source)) {
+            throw new IllegalArgumentException("File must exist: " + source);
+        }
+        if (title == null || title.trim().isEmpty()) {
+            throw new IllegalArgumentException("Title cannot be empty");
+        }
+        if (fileStorageService == null) {
+            throw new IllegalStateException("File storage is not configured");
+        }
+
+        try {
+            long size = Files.size(source);
+            MediaType type = MediaType.fromString(mediaType);
+            String originalFilename = source.getFileName().toString();
+
+            // Link first: if this fails there is no half-registered media row.
+            OptimizedFileStorageService.LinkResult link =
+                    fileStorageService.linkFileIntoStorage(source, originalFilename, size, type);
+
+            MediaFile mediaFile = new MediaFile(
+                mediaDatabase.getNextMediaFileId(),
+                originalFilename,
+                originalFilename,
+                determineContentType(originalFilename, type),
+                size,
+                link.relativePath(),
+                userId,
+                title.trim(),
+                description != null ? description.trim() : "",
+                isPublic
+            );
+            mediaFile.setUploadDate(LocalDateTime.now());
+            mediaFile.setMediaType(type);
+            mediaFile.setSourceUrl(sourceUrl);
+
+            mediaDatabase.addMediaFile(mediaFile);
+            return new ImportedMedia(mediaFile, link.hardLinked());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to import " + source.getFileName() + ": " + e.getMessage(), e);
+        }
+    }
+
     /**
      * Determine content type based on filename and media type
      */

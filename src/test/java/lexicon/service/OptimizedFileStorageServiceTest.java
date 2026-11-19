@@ -340,4 +340,43 @@ class OptimizedFileStorageServiceTest {
             assertArrayEquals(largeContent, retrievedContent);
         }
     }
+
+    // ── toWslPath ───────────────────────────────────────────────────────────────────
+    // This is what turns the Windows path qBittorrent reports into the path `wsl ln` needs
+    // when a torrent is hardlinked into the library. It cannot be exercised without
+    // qBittorrent running, so it is pinned here instead.
+
+    @Test
+    void mapsTheUncMediaPathIntoTheDistro() {
+        assertEquals("/mnt/wsl/PHYSICALDRIVE1p2/lexicon-storage/music/original/song.mp3",
+                OptimizedFileStorageService.toWslPath(Path.of(
+                        "//wsl.localhost/Ubuntu/mnt/wsl/PHYSICALDRIVE1p2/lexicon-storage/music/original/song.mp3")));
+    }
+
+    @Test
+    void mapsTheUncPathWhicheverSlashesItArrivesWith() {
+        // qBittorrent answers with Windows separators even though it was given forward ones.
+        assertEquals("/mnt/wsl/PHYSICALDRIVE1p2/lexicon-storage/torrents/complete",
+                OptimizedFileStorageService.toWslPath(Path.of(
+                        "\\\\wsl.localhost\\Ubuntu\\mnt\\wsl\\PHYSICALDRIVE1p2\\lexicon-storage\\torrents\\complete")));
+    }
+
+    @Test
+    void ignoresTheCaseOfTheUncHost() {
+        assertEquals("/mnt/wsl/x",
+                OptimizedFileStorageService.toWslPath(Path.of("//WSL.localhost/Ubuntu/mnt/wsl/x")));
+    }
+
+    @Test
+    void mapsADriveLetterToItsMountPoint() {
+        assertEquals("/mnt/c/Users/HP/file.mp3",
+                OptimizedFileStorageService.toWslPath(Path.of("C:/Users/HP/file.mp3")));
+    }
+
+    @Test
+    void refusesAPathWithNoDistroAfterTheHost() {
+        // Nothing to link into: the caller must fall back to a move rather than run `ln`
+        // against a path that does not exist inside WSL.
+        assertNull(OptimizedFileStorageService.toWslPath(Path.of("//wsl.localhost/Ubuntu")));
+    }
 }

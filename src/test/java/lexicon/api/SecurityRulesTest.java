@@ -111,7 +111,8 @@ class SecurityRulesTest {
                 {"POST", "/api/chat/upload"}, {"POST", "/api/avatar/upload"}, {"GET", "/api/avatar/bob"},
                 {"POST", "/api/push/subscribe"}, {"POST", "/api/push/send"},
                 {"GET", "/api/notifications"}, {"PUT", "/api/notifications/prefs"},
-                {"GET", "/api/events"}, {"POST", "/api/events"}, {"GET", "/api/voice/status"}}) {
+                {"GET", "/api/events"}, {"POST", "/api/events"}, {"GET", "/api/voice/status"},
+                {"GET", "/api/printer-monitor/status"}, {"GET", "/api/printer-monitor/camera"}}) {
             anonymous(HttpMethod.valueOf(r[0]), r[1]).andExpect(status().isUnauthorized());
         }
     }
@@ -125,7 +126,8 @@ class SecurityRulesTest {
                 {"POST", "/api/playlists"}, {"POST", "/api/playback/position"}, {"POST", "/api/download-queue/start"},
                 {"POST", "/api/livestream/queue"},
                 {"POST", "/api/avatar/upload"}, {"POST", "/api/push/subscribe"}, {"GET", "/api/notifications"},
-                {"POST", "/api/events"}, {"GET", "/api/voice/status"}, {"GET", "/api/app/anything"}}) {
+                {"POST", "/api/events"}, {"GET", "/api/voice/status"}, {"GET", "/api/app/anything"},
+                {"GET", "/api/printer-monitor/status"}, {"GET", "/api/printer-monitor/camera"}}) {
             asPlayer(HttpMethod.valueOf(r[0]), r[1]).andExpect(status().isOk());
         }
     }
