@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MockLexiconDatabase implements ILexiconDatabase {
     
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
+    private final Map<Integer, String> roles = new ConcurrentHashMap<>();
     private int nextPlayerId = 1;
     
     @Override
@@ -78,6 +79,25 @@ public class MockLexiconDatabase implements ILexiconDatabase {
     }
 
     @Override
+    public String getPlayerRole(int playerId) {
+        return players.containsKey(playerId) ? roles.getOrDefault(playerId, "USER") : null;
+    }
+
+    @Override
+    public void setPlayerRole(int playerId, String role) {
+        if (players.containsKey(playerId)) {
+            roles.put(playerId, role);
+        }
+    }
+
+    @Override
+    public int countPlayersWithRole(String role) {
+        return (int) players.keySet().stream()
+                .filter(id -> role.equals(roles.getOrDefault(id, "USER")))
+                .count();
+    }
+
+    @Override
     public boolean playerExists(String username) {
         return getPlayerByUsername(username) != null;
     }
@@ -90,6 +110,7 @@ public class MockLexiconDatabase implements ILexiconDatabase {
     // Utility method for tests
     public void clear() {
         players.clear();
+        roles.clear();
         nextPlayerId = 1;
     }
 }

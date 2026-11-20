@@ -2,6 +2,7 @@ package lexicon.data;
 
 import lexicon.object.Player;
 import lexicon.utils.DatabaseConfig;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -22,6 +23,19 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
         return DriverManager.getConnection(DATABASE_URL, "SA", DatabaseConfig.password());
     }
     
+    /**
+     * Make sure PLAYERS has the ROLE column. Alchemy adds it too; whichever server starts first
+     * wins and the other's ALTER fails harmlessly. Existing rows get the default 'USER'.
+     */
+    @PostConstruct
+    public void ensureRoleColumn() {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE PUBLIC.PLAYERS ADD COLUMN role VARCHAR(20) DEFAULT 'USER' NOT NULL");
+        } catch (SQLException ignored) {
+            // column already exists, or PLAYERS has not been created yet (Alchemy creates it with ROLE)
+        }
+    }
+
     // Player management methods
     @Override
     public int getNextPlayerId() {
@@ -233,6 +247,46 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     
+    @Override
+    public String getPlayerRole(int playerId) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT role FROM players WHERE id = ?")) {
+            stmt.setInt(1, playerId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getString("role") : null;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public void setPlayerRole(int playerId, String role) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("UPDATE players SET role = ? WHERE id = ?")) {
+            stmt.setString(1, role);
+            stmt.setInt(2, playerId);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to set role: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public int countPlayersWithRole(String role) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM players WHERE role = ?")) {
+            stmt.setString(1, role);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return 0;
+        }
+    }
+
     @Override
     public boolean playerExists(String username) {
         return getPlayerByUsername(username) != null;

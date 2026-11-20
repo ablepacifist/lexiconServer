@@ -172,6 +172,21 @@ class SecurityRulesTest {
     }
 
     @Test
+    void permissionLookupIsBridgeOnly() throws Exception {
+        asBridge(HttpMethod.GET, "/api/permissions/5").andExpect(status().isOk());
+        asPlayer(HttpMethod.GET, "/api/permissions/5").andExpect(status().isForbidden());
+        anonymous(HttpMethod.GET, "/api/permissions/5").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminRoutesNeedASignedInPlayerAndLeaveTheRoleCheckToTheService() throws Exception {
+        asPlayer(HttpMethod.GET, "/api/admin/players/5/permissions").andExpect(status().isOk());
+        asPlayer(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isOk());
+        anonymous(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isUnauthorized());
+        asBridge(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isForbidden());
+    }
+
+    @Test
     void wrongTokenIsJustAnonymous() throws Exception {
         mvc.perform(request(HttpMethod.POST, "/api/livestream/queue").header("X-Service-Token", "nope"))
                 .andExpect(status().isUnauthorized());

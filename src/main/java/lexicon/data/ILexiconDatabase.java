@@ -22,6 +22,12 @@ public interface ILexiconDatabase {
     /** Replaces only the stored password (used to upgrade a legacy plaintext value to a BCrypt hash). */
     void updatePlayerPassword(int playerId, String hashedPassword);
     
+    // Roles (PLAYERS.ROLE). Only these touch the column; updatePlayer() deliberately leaves it alone.
+    /** The stored role value, or {@code null} when the player does not exist. */
+    String getPlayerRole(int playerId);
+    void setPlayerRole(int playerId, String role);
+    int countPlayersWithRole(String role);
+
     // Additional utility methods
     boolean playerExists(String username);
     boolean emailExists(String email);

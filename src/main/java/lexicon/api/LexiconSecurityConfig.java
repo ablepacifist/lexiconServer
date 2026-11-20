@@ -113,6 +113,9 @@ public class LexiconSecurityConfig {
                 String[] bridgeAndPlayers = {"/api/chat/**", "/api/avatar/**", "/api/push/**",
                         "/api/notifications/**", "/api/livestream/**"};
                 String[] bridgeReads = {"/api/players", "/api/players/username/*", "/api/media/**", "/api/playlists/**"};
+                // The bridge asks who may do what (voice admin) when it resumes a session. Always token-only, even
+                // in legacy mode: it is new, so no old bridge build depends on it being open.
+                auth.requestMatchers(HttpMethod.GET, "/api/permissions/*").hasRole(ROLE_SERVICE);
                 if (legacyOpenRoutes) {
                     auth.requestMatchers(bridgeOnly).permitAll();
                     auth.requestMatchers(bridgeAndPlayers).permitAll();
