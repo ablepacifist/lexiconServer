@@ -7,6 +7,7 @@ import lexicon.object.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
@@ -36,7 +37,8 @@ class PermissionManagerTest {
     @Test
     void everyoneStartsAsUserWithNoPermissions() {
         assertEquals(Role.USER, manager.getRole(player));
-        assertTrue(manager.getPermissions(player).isEmpty());
+        assertEquals(EnumSet.of(Permission.GAMESERVER_START, Permission.GAMESERVER_REQUEST_RESTART), manager.getPermissions(player));
+        assertFalse(manager.hasPermission(player, Permission.GAMESERVER_ADMIN));
         assertFalse(manager.hasPermission(player, Permission.HOLDFAST_ADVANCE_TIME));
     }
 
@@ -73,7 +75,7 @@ class PermissionManagerTest {
         assertTrue(perms.contains("HOLDFAST_ADVANCE_TIME"));
         assertTrue(perms.contains("VOICE_ADMIN"));
         assertEquals(perms.stream().sorted().toList(), perms);
-        assertEquals(List.of(), manager.describe(player).get("permissions"));
+        assertEquals(List.of("GAMESERVER_REQUEST_RESTART", "GAMESERVER_START"), manager.describe(player).get("permissions"));
     }
 
     @Test

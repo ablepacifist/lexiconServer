@@ -16,5 +16,11 @@ public enum Permission {
     /** Voice-chat admin: create/remove channels, pins, channel access, diagnostics (GTW bridge). */
     VOICE_ADMIN,
     /** Change other players' roles (Lexicon). */
-    MANAGE_PERMISSIONS
+    MANAGE_PERMISSIONS,
+    /** Start a stopped game server on GTW (bridge Servers panel, through the gtw-games manager). */
+    GAMESERVER_START,
+    /** Ask for a game server restart; it runs once the server is empty or an admin approves (GTW bridge). */
+    GAMESERVER_REQUEST_RESTART,
+    /** Game server admin: stop, restart now, logs, console, approve restart requests (GTW bridge). */
+    GAMESERVER_ADMIN
 }

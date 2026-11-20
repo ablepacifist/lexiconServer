@@ -10,7 +10,8 @@ import java.util.Set;
  * {@link Permission}s; nothing else in the stack decides what a role means.
  */
 public enum Role {
-    USER(EnumSet.noneOf(Permission.class)),
+    /** Every signed-in player: may start a stopped game server and ask for a restart. */
+    USER(EnumSet.of(Permission.GAMESERVER_START, Permission.GAMESERVER_REQUEST_RESTART)),
     ADMIN(EnumSet.allOf(Permission.class));
 
     private final Set<Permission> permissions;
