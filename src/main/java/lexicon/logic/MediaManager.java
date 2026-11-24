@@ -499,14 +499,14 @@ public class MediaManager implements MediaManagerService {
                 }
             } catch (NumberFormatException e) {
                 // Invalid range format - return error indicator with negative start
-                return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+                return new StreamResult((byte[]) null, -1, -1, fileSize, false, mediaFile.getContentType());
             }
         }
         
         // Validate range
         if (start > end || start < 0 || end >= fileSize) {
             // Invalid range - return error indicator with negative start
-            return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+            return new StreamResult((byte[]) null, -1, -1, fileSize, false, mediaFile.getContentType());
         }
         
         // Extract requested range
@@ -539,37 +539,38 @@ public class MediaManager implements MediaManagerService {
                         end = Long.parseLong(ranges[1]);
                     }
                 } catch (NumberFormatException e) {
-                    return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+                    return new StreamResult((byte[]) null, -1, -1, fileSize, false, mediaFile.getContentType());
                 }
             }
             
+            // A range that runs past the end means "to the end" (RFC 9110), not an error.
+            if (end >= fileSize) {
+                end = fileSize - 1;
+            }
             // Validate range
-            if (start > end || start < 0 || end >= fileSize) {
-                return new StreamResult(null, -1, -1, fileSize, false, mediaFile.getContentType());
+            if (start > end || start < 0) {
+                return new StreamResult((byte[]) null, -1, -1, fileSize, false, mediaFile.getContentType());
             }
-            
-            // For large files, limit chunk size to avoid memory issues (2MB chunks)
-            long maxChunkSize = 2 * 1024 * 1024;
-            if (end - start + 1 > maxChunkSize) {
-                end = start + maxChunkSize - 1;
-                // Must flag as partial even if client didn't send Range header,
-                // otherwise controller returns HTTP 200 with truncated body
-                isPartialContent = true;
-            }
-            
-            // Read the file chunk
+
+            // Send the whole requested range, streamed from disk as it is written out.
+            //
+            // This used to read at most 2 MB into memory and answer with that, even for an
+            // open-ended "bytes=N-". Browsers ask again for the rest, but the Android app's
+            // ExoPlayer treats the end of the response as the end of the file: an audiobook
+            // resumed mid-way played ~4 minutes, was marked finished and the playlist
+            // skipped to the next book. Songs and videos did the same after any seek.
+            // Streaming keeps memory flat however large the range is.
             long contentLength = end - start + 1;
-            byte[] rangeData = new byte[(int) contentLength];
-            
-            try (InputStream inputStream = fileStorageService.getFileInputStream(filePath)) {
+            InputStream inputStream = fileStorageService.getFileInputStream(filePath);
+            try {
                 // skipNBytes guarantees all bytes are skipped (unlike skip() which can return early)
                 inputStream.skipNBytes(start);
-                // readNBytes guarantees all requested bytes are read (unlike read() which can short-read)
-                int bytesRead = inputStream.readNBytes(rangeData, 0, (int) contentLength);
-                System.out.println("Read " + bytesRead + " bytes from filesystem (requested " + contentLength + ")");
+            } catch (IOException | RuntimeException e) {
+                inputStream.close();
+                throw e;
             }
-            
-            return new StreamResult(rangeData, start, end, fileSize, isPartialContent, mediaFile.getContentType());
+            InputStream range = new BoundedInputStream(inputStream, contentLength);
+            return new StreamResult(range, start, end, fileSize, isPartialContent, mediaFile.getContentType());
             
         } catch (Exception e) {
             System.err.println("Error reading from file system: " + e.getMessage());

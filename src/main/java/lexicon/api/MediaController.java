@@ -292,7 +292,9 @@ public class MediaController {
      * GET /api/media/stream/{id}
      *
      * No Range header: HTTP 200 + stream full file via InputStreamResource.
-     * With Range header: HTTP 206 + 2MB byte[] chunks.
+     * With Range header: HTTP 206 + the whole requested range ("bytes=N-" means to the end
+     * of the file), streamed from disk. Never a shorter slice: ExoPlayer in the Android app
+     * takes the end of the response as the end of the media and skips to the next item.
      */
     @GetMapping("/stream/{id}")
     public ResponseEntity<?> streamFile(
@@ -357,7 +359,7 @@ public class MediaController {
                     .header("Accept-Ranges", "bytes")
                     .header("Content-Range", "bytes " + result.getStart() + "-" + result.getEnd() + "/" + result.getTotalSize())
                     .header("Content-Length", String.valueOf(result.getContentLength()))
-                    .body(result.getData());
+                    .body(result.getStream() != null ? new InputStreamResource(result.getStream()) : result.getData());
         } catch (Exception e) {
             log.error("STREAM id={} — EXCEPTION: {}", id, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
