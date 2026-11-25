@@ -37,6 +37,33 @@ public class ChatFileManager implements ChatFileManagerService {
     }
 
     @Override
+    public long deleteChatFile(long fileId) {
+        ChatFile chatFile = chatFileDatabase.getChatFile(fileId);
+        if (chatFile == null) return -1;
+        Path dir = getChatUploadsDir().toAbsolutePath().normalize();
+        long freed = deleteInside(dir, chatFile.getStoredFilename());
+        if (chatFile.getThumbnailFilename() != null) {
+            freed += deleteInside(dir.resolve("thumbnails"), chatFile.getThumbnailFilename());
+        }
+        chatFileDatabase.deleteChatFile(fileId);
+        return freed;
+    }
+
+    /** Deletes {@code name} only if it resolves inside {@code dir}; returns the bytes removed. */
+    private static long deleteInside(Path dir, String name) {
+        if (name == null || name.isBlank()) return 0;
+        Path target = dir.resolve(name).normalize();
+        if (!target.startsWith(dir)) return 0;
+        try {
+            long size = Files.exists(target) ? Files.size(target) : 0;
+            return Files.deleteIfExists(target) ? size : 0;
+        } catch (java.io.IOException e) {
+            System.err.println("Could not delete chat file " + target + ": " + e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
     public Map<String, Object> uploadChatFile(byte[] fileData, String originalFilename, String mimeType,
                                    int userId, Integer channelId) {
         if (fileData == null || fileData.length == 0) {

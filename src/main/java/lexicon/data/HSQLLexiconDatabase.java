@@ -36,6 +36,22 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
         }
     }
 
+    /**
+     * Make sure PLAYERS has the date columns the admin user list reads. Alchemy creates PLAYERS
+     * with only id/username/password/level/role, so on a database that started that way the
+     * last-login stamp had nowhere to go. Each ALTER fails harmlessly when the column exists.
+     */
+    @PostConstruct
+    public void ensureActivityColumns() {
+        for (String column : new String[]{"registration_date", "last_login_date", "last_active_date"}) {
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                stmt.execute("ALTER TABLE PUBLIC.PLAYERS ADD COLUMN " + column + " TIMESTAMP");
+            } catch (SQLException ignored) {
+                // already there, or PLAYERS not created yet
+            }
+        }
+    }
+
     // Player management methods
     @Override
     public int getNextPlayerId() {
@@ -219,6 +235,49 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     @Override
+    public boolean deletePlayerAccount(int playerId) {
+        String[] dependents = {
+                "DELETE FROM PUBLIC.INVENTORY WHERE player_id = ?",
+                "DELETE FROM PUBLIC.KNOWLEDGE_BOOK WHERE player_id = ?",
+                "DELETE FROM PUBLIC.PLAYER_POTIONS WHERE player_id = ?",
+        };
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                for (String sql : dependents) {
+                    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                        stmt.setInt(1, playerId);
+                        stmt.executeUpdate();
+                    } catch (SQLException missingTable) {
+                        // An Alchemy table that does not exist here holds nothing to delete.
+                        if (!isMissingTable(missingTable)) throw missingTable;
+                    }
+                }
+                int deleted;
+                try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM players WHERE id = ?")) {
+                    stmt.setInt(1, playerId);
+                    deleted = stmt.executeUpdate();
+                }
+                conn.commit();
+                return deleted > 0;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            System.err.println("Could not delete account " + playerId + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** HSQLDB: "user lacks privilege or object not found" (SQL state 42501) for an unknown table. */
+    private static boolean isMissingTable(SQLException e) {
+        return "42501".equals(e.getSQLState()) || String.valueOf(e.getMessage()).contains("object not found");
+    }
+
+    @Override
     public void updatePlayerPassword(int playerId, String hashedPassword) {
         try (Connection conn = getConnection()) {
             String sql = "UPDATE players SET password = ? WHERE id = ?";
@@ -247,6 +306,44 @@ public class HSQLLexiconDatabase implements ILexiconDatabase {
     }
     
     
+    @Override
+    public void updatePlayerLastActive(int playerId, LocalDateTime lastActiveDate) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("UPDATE players SET last_active_date = ? WHERE id = ?")) {
+            stmt.setTimestamp(1, lastActiveDate != null ? Timestamp.valueOf(lastActiveDate) : null);
+            stmt.setInt(2, playerId);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("Could not record activity for player id " + playerId + ": " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<lexicon.object.PlayerActivity> getPlayerActivity() {
+        List<lexicon.object.PlayerActivity> rows = new ArrayList<>();
+        String sql = "SELECT id, username, role, registration_date, last_login_date, last_active_date FROM players ORDER BY id";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                rows.add(new lexicon.object.PlayerActivity(
+                        rs.getInt("id"),
+                        rs.getString("username"),
+                        rs.getString("role"),
+                        toLocal(rs.getTimestamp("registration_date")),
+                        toLocal(rs.getTimestamp("last_login_date")),
+                        toLocal(rs.getTimestamp("last_active_date"))));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return rows;
+    }
+
+    private static LocalDateTime toLocal(Timestamp t) {
+        return t != null ? t.toLocalDateTime() : null;
+    }
+
     @Override
     public String getPlayerRole(int playerId) {
         try (Connection conn = getConnection();

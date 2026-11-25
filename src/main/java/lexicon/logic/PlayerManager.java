@@ -142,6 +142,17 @@ public class PlayerManager implements PlayerManagerService {
     }
     
     @Override
+    public void setPassword(int playerId, String newPassword) {
+        if (newPassword == null || newPassword.length() < MIN_ADMIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("The password must be at least " + MIN_ADMIN_PASSWORD_LENGTH + " characters.");
+        }
+        if (database.getPlayer(playerId) == null) {
+            throw new IllegalArgumentException("No such player.");
+        }
+        database.updatePlayerPassword(playerId, passwordEncoder.encode(newPassword));
+    }
+
+    @Override
     public boolean updatePlayer(Player player) {
         if (player == null) {
             return false;

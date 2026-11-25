@@ -130,6 +130,37 @@ public class HSQLMediaDatabase implements IMediaDatabase {
     }
     
     @Override
+    public List<MediaFile> getAllMediaFiles() {
+        List<MediaFile> files = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM media_files ORDER BY upload_date DESC");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                files.add(mapResultSetToMediaFile(rs));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return files;
+    }
+
+    @Override
+    public int countMediaFilesWithPath(String filePath) {
+        if (filePath == null || filePath.isEmpty()) return 0;
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM media_files WHERE file_path = ?")) {
+            stmt.setString(1, filePath);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            // Unknown: report it as shared, so the caller keeps the file rather than risk another row's data.
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    @Override
     public List<MediaFile> getAllPublicMediaFiles() {
         List<MediaFile> files = new ArrayList<>();
         try (Connection conn = getConnection()) {

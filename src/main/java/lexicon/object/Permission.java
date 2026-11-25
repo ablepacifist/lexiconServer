@@ -17,6 +17,8 @@ public enum Permission {
     VOICE_ADMIN,
     /** Change other players' roles (Lexicon). */
     MANAGE_PERMISSIONS,
+    /** See every account and upload, delete accounts and uploads, set a player's password (Lexicon admin page). */
+    MANAGE_USERS,
     /** Start a stopped game server on GTW (bridge Servers panel, through the gtw-games manager). */
     GAMESERVER_START,
     /** Ask for a game server restart; it runs once the server is empty or an admin approves (GTW bridge). */

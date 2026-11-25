@@ -69,6 +69,29 @@ public class MockLexiconDatabase implements ILexiconDatabase {
         }
     }
     
+    private final Map<Integer, LocalDateTime> lastActive = new ConcurrentHashMap<>();
+
+    @Override
+    public boolean deletePlayerAccount(int playerId) {
+        lastActive.remove(playerId);
+        roles.remove(playerId);
+        return players.remove(playerId) != null;
+    }
+
+    @Override
+    public void updatePlayerLastActive(int playerId, LocalDateTime lastActiveDate) {
+        if (players.containsKey(playerId)) lastActive.put(playerId, lastActiveDate);
+    }
+
+    @Override
+    public List<lexicon.object.PlayerActivity> getPlayerActivity() {
+        List<lexicon.object.PlayerActivity> rows = new ArrayList<>();
+        players.values().stream().sorted(Comparator.comparingInt(Player::getId)).forEach(p ->
+                rows.add(new lexicon.object.PlayerActivity(p.getId(), p.getUsername(), roles.getOrDefault(p.getId(), "USER"),
+                        p.getRegistrationDate(), p.getLastLoginDate(), lastActive.get(p.getId()))));
+        return rows;
+    }
+
     @Override
     public void updatePlayerPassword(int playerId, String hashedPassword) {
         Player old = players.get(playerId);

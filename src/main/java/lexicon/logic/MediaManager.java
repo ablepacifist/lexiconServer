@@ -317,6 +317,28 @@ public class MediaManager implements MediaManagerService {
             return false;
         }
         
+        removeMedia(mediaFile);
+        return true;
+    }
+
+    @Override
+    public long deleteMediaFileAsAdmin(int mediaFileId) {
+        MediaFile mediaFile = mediaDatabase.getMediaFile(mediaFileId);
+        if (mediaFile == null) {
+            return -1;
+        }
+        return removeMedia(mediaFile);
+    }
+
+    /**
+     * Deletes a media file everywhere it lives and returns the bytes freed on disk.
+     *
+     * Deleting used to drop only the database rows, so the file itself stayed on disk and no
+     * space came back. The stored file is now removed too, unless another media row still
+     * points at the same path (then it is kept, and nothing is reported freed).
+     * Playlist entries go with the row (ON DELETE CASCADE).
+     */
+    private long removeMedia(MediaFile mediaFile) {
         // A torrent-imported file has a second name in qBittorrent's save path; the hook
         // removes that too, and removes the torrent itself once its last file is gone. For
         // an ordinary upload this does nothing.
@@ -324,8 +346,25 @@ public class MediaManager implements MediaManagerService {
             torrentCleanup.onMediaDeleted(mediaFile);
         }
 
-        mediaDatabase.deleteMediaFile(mediaFileId);
-        return true;
+        String path = mediaFile.getFilePath();
+        boolean ownFile = path != null && !path.isEmpty() && mediaDatabase.countMediaFilesWithPath(path) <= 1;
+        mediaDatabase.deleteMediaFile(mediaFile.getId());
+
+        long freed = 0;
+        if (ownFile && fileStorageService != null) {
+            long size = mediaFile.getFileSize();
+            try {
+                size = fileStorageService.getFileSize(path);
+            } catch (Exception ignored) {
+                // fall back to the recorded size
+            }
+            if (fileStorageService.deleteFile(path)) {
+                freed = Math.max(0, size);
+            }
+        } else if (path == null || path.isEmpty()) {
+            freed = Math.max(0, mediaFile.getFileSize()); // stored in the database, now gone with the row
+        }
+        return freed;
     }
     
     @Override

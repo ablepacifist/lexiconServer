@@ -75,6 +75,32 @@ public class HSQLChatFileDatabase implements IChatFileDatabase {
         return null;
     }
 
+    @Override
+    public java.util.List<ChatFile> getAllChatFiles() {
+        java.util.List<ChatFile> files = new java.util.ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM chat_files ORDER BY created_at DESC");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                files.add(mapResultSet(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to list chat files: " + e.getMessage(), e);
+        }
+        return files;
+    }
+
+    @Override
+    public void deleteChatFile(long id) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement("DELETE FROM chat_files WHERE id = ?")) {
+            stmt.setLong(1, id);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to delete chat file: " + e.getMessage(), e);
+        }
+    }
+
     private ChatFile mapResultSet(ResultSet rs) throws SQLException {
         ChatFile cf = new ChatFile();
         cf.setId(rs.getLong("id"));
