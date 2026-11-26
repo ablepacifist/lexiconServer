@@ -38,6 +38,15 @@ public interface PlayerManagerService {
      * Update player information
      */
     boolean updatePlayer(Player player);
+
+    /** Shortest password an admin may set for someone. */
+    int MIN_ADMIN_PASSWORD_LENGTH = 8;
+
+    /**
+     * Replace a player's password (hashed here). Throws IllegalArgumentException when the player
+     * does not exist or the password is shorter than {@link #MIN_ADMIN_PASSWORD_LENGTH}.
+     */
+    void setPassword(int playerId, String newPassword);
     
     /**
      * Delete a player

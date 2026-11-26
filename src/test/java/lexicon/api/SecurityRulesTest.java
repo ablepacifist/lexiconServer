@@ -85,7 +85,7 @@ class SecurityRulesTest {
                 {"GET", "/api/app/version"}, {"GET", "/api/app/download/latest"},
                 {"GET", "/api/media/stream/1"}, {"GET", "/api/stream/1"},
                 {"GET", "/api/avatar/image/a/b.png"}, {"GET", "/api/chat/files/1"}, {"GET", "/api/chat/files/1/thumb"},
-                {"GET", "/api/livestream/updates"}, {"GET", "/api/notifications/stream"},
+                {"GET", "/api/livestream/updates"},
                 {"GET", "/api/playlists/import-progress/x"},
                 // guests vote on shared event polls without an account
                 {"GET", "/api/events/7"}, {"GET", "/api/events/7/polls/3"},
@@ -111,10 +111,21 @@ class SecurityRulesTest {
                 {"POST", "/api/chat/upload"}, {"POST", "/api/avatar/upload"}, {"GET", "/api/avatar/bob"},
                 {"POST", "/api/push/subscribe"}, {"POST", "/api/push/send"},
                 {"GET", "/api/notifications"}, {"PUT", "/api/notifications/prefs"},
+                {"GET", "/api/notifications/stream"},
                 {"GET", "/api/events"}, {"POST", "/api/events"}, {"GET", "/api/voice/status"},
                 {"GET", "/api/printer-monitor/status"}, {"GET", "/api/printer-monitor/camera"}}) {
             anonymous(HttpMethod.valueOf(r[0]), r[1]).andExpect(status().isUnauthorized());
         }
+    }
+
+    /**
+     * The exploit this closes: the stream used to be open, and the identity guard only
+     * compares a userId with a signed-in principal, so an anonymous caller could name any
+     * player and read their notifications live.
+     */
+    @Test
+    void nobodyCanListenToAnotherPlayersNotificationsAnonymously() throws Exception {
+        anonymous(HttpMethod.GET, "/api/notifications/stream?userId=7").andExpect(status().isUnauthorized());
     }
 
     // --------------------------------------------------------------- signed-in player
@@ -169,6 +180,21 @@ class SecurityRulesTest {
                 {"POST", "/api/events"}, {"GET", "/api/voice/status"}}) {
             asBridge(HttpMethod.valueOf(r[0]), r[1]).andExpect(status().isForbidden());
         }
+    }
+
+    @Test
+    void permissionLookupIsBridgeOnly() throws Exception {
+        asBridge(HttpMethod.GET, "/api/permissions/5").andExpect(status().isOk());
+        asPlayer(HttpMethod.GET, "/api/permissions/5").andExpect(status().isForbidden());
+        anonymous(HttpMethod.GET, "/api/permissions/5").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminRoutesNeedASignedInPlayerAndLeaveTheRoleCheckToTheService() throws Exception {
+        asPlayer(HttpMethod.GET, "/api/admin/players/5/permissions").andExpect(status().isOk());
+        asPlayer(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isOk());
+        anonymous(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isUnauthorized());
+        asBridge(HttpMethod.PUT, "/api/admin/players/5/role").andExpect(status().isForbidden());
     }
 
     @Test

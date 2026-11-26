@@ -282,6 +282,50 @@ public class OptimizedFileStorageService {
         return null;
     }
 
+    /** A file on the storage drive: its path relative to the storage base ('/' separated), size and modified time. */
+    public record StoredFile(String relativePath, long size, long lastModifiedMillis) {}
+
+    /**
+     * Every regular file under the given folders of the storage base (e.g. "audiobooks"). Links are
+     * not followed and folders that do not exist are skipped. Read-only.
+     */
+    public List<StoredFile> listStoredFiles(List<String> folders) throws IOException {
+        Path base = Paths.get(storageProperties.getBasePath()).toAbsolutePath().normalize();
+        List<StoredFile> files = new ArrayList<>();
+        for (String folder : folders) {
+            Path root = base.resolve(folder).normalize();
+            if (!root.startsWith(base) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) continue;
+            try (var walk = Files.walk(root)) {
+                for (Path p : (Iterable<Path>) walk::iterator) {
+                    if (!Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) continue;
+                    String rel = base.relativize(p).toString().replace('\\', '/');
+                    files.add(new StoredFile(rel, Files.size(p), Files.getLastModifiedTime(p, LinkOption.NOFOLLOW_LINKS).toMillis()));
+                }
+            }
+        }
+        return files;
+    }
+
+    /**
+     * Delete one stored file, only if it is a regular file inside one of {@code allowedFolders}.
+     * Returns the bytes freed, or -1 when it was refused, missing or could not be deleted.
+     */
+    public long deleteStoredFile(String relativePath, List<String> allowedFolders) {
+        if (relativePath == null || relativePath.isBlank()) return -1;
+        Path base = Paths.get(storageProperties.getBasePath()).toAbsolutePath().normalize();
+        Path target = base.resolve(relativePath.replace('\\', '/')).normalize();
+        boolean allowed = allowedFolders.stream().map(f -> base.resolve(f).normalize()).anyMatch(target::startsWith);
+        if (!allowed || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) return -1;
+        try {
+            long size = Files.size(target);
+            Files.delete(target);
+            return size;
+        } catch (IOException e) {
+            System.err.println("Failed to delete stored file: " + relativePath + " - " + e.getMessage());
+            return -1;
+        }
+    }
+
     /**
      * Delete file from storage
      */

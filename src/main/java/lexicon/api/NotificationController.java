@@ -112,11 +112,26 @@ public class NotificationController {
         }
     }
 
-    /** GET /api/notifications/stream?userId= — SSE live stream. */
+    /**
+     * GET /api/notifications/stream — SSE live stream for the signed-in player.
+     *
+     * The stream belongs to whoever is signed in; {@code userId} is accepted only so older
+     * clients keep working, and the identity guard already refuses one that names someone
+     * else. The method-level {@code @CrossOrigin(allowCredentials = "false")} that used to
+     * sit here is gone: the website now opens this with credentials, and the global CORS
+     * policy (credentials allowed, named origins) is the one that should apply.
+     */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @CrossOrigin(origins = "*", allowedHeaders = "*", allowCredentials = "false", maxAge = 3600)
-    public SseEmitter stream(@RequestParam int userId) {
-        return notificationService.subscribe(userId);
+    public ResponseEntity<SseEmitter> stream(@RequestParam(required = false) Integer userId) {
+        LexiconPrincipal principal = LexiconPrincipal.current();
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Integer streamFor = principal.isService() ? userId : principal.getUserId();
+        if (streamFor == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(notificationService.subscribe(streamFor));
     }
 
     private ResponseEntity<Map<String, Object>> errorBody(String message) {

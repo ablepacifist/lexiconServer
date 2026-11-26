@@ -58,7 +58,8 @@ class SecurityRulesLegacyModeTest {
                 {"POST", "/api/media/upload"}, {"DELETE", "/api/media/3"}, {"POST", "/api/playlists"},
                 {"POST", "/api/playback/position"}, {"GET", "/api/playback/user/5"},
                 {"POST", "/api/download-queue/start"}, {"POST", "/api/events"},
-                {"GET", "/api/printer-monitor/status"}, {"GET", "/api/printer-monitor/camera"}}) {
+                {"GET", "/api/printer-monitor/status"}, {"GET", "/api/printer-monitor/camera"},
+                {"GET", "/api/permissions/5"}, {"PUT", "/api/admin/players/5/role"}}) {
             mvc.perform(request(HttpMethod.valueOf(r[0]), r[1])).andExpect(status().isUnauthorized());
         }
     }

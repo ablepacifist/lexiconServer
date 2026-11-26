@@ -93,10 +93,16 @@ public class LexiconSecurityConfig {
 
                 // Loaded by <audio>/<video>/<img> tags and EventSource, which cannot send the Android
                 // shell's Authorization header, so they have to stay readable without a login.
+                //
+                // /api/notifications/stream is deliberately NOT here any more. Open, it let anyone
+                // subscribe to any player's notifications by naming their userId, because the
+                // identity guard only checks a userId against a signed-in principal and an
+                // anonymous request has none. The website now opens it with withCredentials and
+                // the native app with its bearer token; both arrive signed in.
                 auth.requestMatchers(HttpMethod.GET,
                         "/api/media/stream/**", "/api/stream/**",
                         "/api/avatar/image/**", "/api/chat/files/**",
-                        "/api/livestream/updates", "/api/notifications/stream",
+                        "/api/livestream/updates",
                         "/api/playlists/import-progress/**").permitAll();
 
                 // Event polls are shared by link and voted on by guests (a browser-generated voterKey, no account).
@@ -113,6 +119,9 @@ public class LexiconSecurityConfig {
                 String[] bridgeAndPlayers = {"/api/chat/**", "/api/avatar/**", "/api/push/**",
                         "/api/notifications/**", "/api/livestream/**"};
                 String[] bridgeReads = {"/api/players", "/api/players/username/*", "/api/media/**", "/api/playlists/**"};
+                // The bridge asks who may do what (voice admin) when it resumes a session. Always token-only, even
+                // in legacy mode: it is new, so no old bridge build depends on it being open.
+                auth.requestMatchers(HttpMethod.GET, "/api/permissions/*").hasRole(ROLE_SERVICE);
                 if (legacyOpenRoutes) {
                     auth.requestMatchers(bridgeOnly).permitAll();
                     auth.requestMatchers(bridgeAndPlayers).permitAll();

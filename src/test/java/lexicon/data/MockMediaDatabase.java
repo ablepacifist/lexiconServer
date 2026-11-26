@@ -45,6 +45,22 @@ public class MockMediaDatabase implements IMediaDatabase {
     }
     
     @Override
+    public List<MediaFile> getAllMediaFiles() {
+        List<MediaFile> all = new ArrayList<>(mediaFiles.values());
+        all.sort((a, b) -> {
+            if (a.getUploadDate() == null || b.getUploadDate() == null) return 0;
+            return b.getUploadDate().compareTo(a.getUploadDate());
+        });
+        return all;
+    }
+
+    @Override
+    public int countMediaFilesWithPath(String filePath) {
+        if (filePath == null) return 0;
+        return (int) mediaFiles.values().stream().filter(m -> filePath.equals(m.getFilePath())).count();
+    }
+
+    @Override
     public List<MediaFile> getAllPublicMediaFiles() {
         return mediaFiles.values().stream()
                 .filter(MediaFile::isPublic)

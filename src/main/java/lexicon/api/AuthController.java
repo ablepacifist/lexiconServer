@@ -1,6 +1,7 @@
 package lexicon.api;
 
 import lexicon.logic.MobileTokenService;
+import lexicon.logic.PermissionManagerService;
 import lexicon.logic.PlayerManagerService;
 import lexicon.logic.RememberMeManagerService;
 import lexicon.object.Player;
@@ -39,6 +40,9 @@ public class AuthController {
 
     @Autowired
     private LoginThrottle loginThrottle;
+
+    @Autowired
+    private PermissionManagerService permissionManagerService;
 
     /**
      * Login endpoint - creates a session
@@ -90,6 +94,7 @@ public class AuthController {
                 player.getDisplayName() : player.getUsername());
             resp.put("email", player.getEmail() != null ? player.getEmail() : "");
             resp.put("level", player.getLevel());
+            resp.putAll(permissionManagerService.describe(player.getId()));
 
             // If "remember me" was checked, issue a persistent cookie
             if (rememberMe) {
@@ -216,6 +221,7 @@ public class AuthController {
                 player.getDisplayName() : player.getUsername());
             userInfo.put("email", player.getEmail() != null ? player.getEmail() : "");
             userInfo.put("level", player.getLevel());
+            userInfo.putAll(permissionManagerService.describe(player.getId()));
 
             return ResponseEntity.ok(userInfo);
 

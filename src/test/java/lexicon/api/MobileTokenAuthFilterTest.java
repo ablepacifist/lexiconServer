@@ -3,6 +3,7 @@ package lexicon.api;
 import lexicon.data.HSQLMobileTokenDatabase;
 import lexicon.logic.MobileTokenManager;
 import lexicon.logic.MobileTokenService;
+import lexicon.logic.PermissionManagerService;
 import lexicon.logic.PlayerManagerService;
 import lexicon.logic.RememberMeManagerService;
 import lexicon.object.Player;
@@ -12,6 +13,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -61,6 +64,9 @@ class MobileTokenAuthFilterTest {
         ReflectionTestUtils.setField(controller, "rememberMeManagerService", rememberMe);
         ReflectionTestUtils.setField(controller, "mobileTokenService", mobileTokenService);
         ReflectionTestUtils.setField(controller, "loginThrottle", new LoginThrottle());
+        PermissionManagerService permissions = mock(PermissionManagerService.class);
+        when(permissions.describe(USER_ID)).thenReturn(Map.of("role", "USER", "permissions", List.of()));
+        ReflectionTestUtils.setField(controller, "permissionManagerService", permissions);
 
         MobileTokenAuthFilter filter =
                 new MobileTokenAuthFilter(mobileTokenService, playerManagerService);
@@ -100,6 +106,8 @@ class MobileTokenAuthFilterTest {
                         .content("{\"username\":\"" + USERNAME + "\",\"password\":\"pw\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value(USERNAME))
+                .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.permissions").isArray())
                 .andExpect(jsonPath("$.mobileToken").doesNotExist());
     }
 
@@ -111,7 +119,9 @@ class MobileTokenAuthFilterTest {
         mvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(USER_ID))
-                .andExpect(jsonPath("$.username").value(USERNAME));
+                .andExpect(jsonPath("$.username").value(USERNAME))
+                .andExpect(jsonPath("$.role").value("USER"))
+                .andExpect(jsonPath("$.permissions").isArray());
     }
 
     @Test

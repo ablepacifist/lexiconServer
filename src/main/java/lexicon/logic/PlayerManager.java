@@ -34,19 +34,14 @@ public class PlayerManager implements PlayerManagerService {
         if (password == null || password.trim().isEmpty()) {
             throw new IllegalArgumentException("Password cannot be empty");
         }
-        if (email == null || email.trim().isEmpty()) {
-            throw new IllegalArgumentException("Email cannot be empty");
-        }
-        
         // Check if username already exists
         if (database.playerExists(username)) {
             throw new IllegalArgumentException("Username already exists");
         }
         
-        // Check if email already exists
-        if (database.emailExists(email)) {
-            throw new IllegalArgumentException("Email already exists");
-        }
+        // No email check: the players table has no email column (addPlayer writes only id,
+        // username, password and level), so the lookup failed on every registration and
+        // logged a stack trace while letting the account through anyway.
         
         // Hash the password
         String hashedPassword = passwordEncoder.encode(password);
@@ -141,6 +136,17 @@ public class PlayerManager implements PlayerManagerService {
         return database.getAllPlayers();
     }
     
+    @Override
+    public void setPassword(int playerId, String newPassword) {
+        if (newPassword == null || newPassword.length() < MIN_ADMIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("The password must be at least " + MIN_ADMIN_PASSWORD_LENGTH + " characters.");
+        }
+        if (database.getPlayer(playerId) == null) {
+            throw new IllegalArgumentException("No such player.");
+        }
+        database.updatePlayerPassword(playerId, passwordEncoder.encode(newPassword));
+    }
+
     @Override
     public boolean updatePlayer(Player player) {
         if (player == null) {

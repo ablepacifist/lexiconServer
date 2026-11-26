@@ -27,6 +27,12 @@ public interface ChatFileManagerService {
     ChatFileServingInfo getThumbnailForServing(long fileId);
 
     /**
+     * Delete a chat upload: its row, the stored image and its thumbnail. Returns the bytes freed,
+     * or -1 when there is no such file. Messages that showed it keep their text.
+     */
+    long deleteChatFile(long fileId);
+
+    /**
      * Simple result holder for file serving responses.
      */
     class ChatFileServingInfo {

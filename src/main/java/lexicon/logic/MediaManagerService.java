@@ -61,6 +61,12 @@ public interface MediaManagerService {
      * Delete a media file
      */
     boolean deleteMediaFile(int mediaFileId, int userId);
+
+    /**
+     * Admin delete: removes the file whatever its owner, from disk as well as the database.
+     * Returns the bytes freed, or -1 when there is no such file.
+     */
+    long deleteMediaFileAsAdmin(int mediaFileId);
     
     /**
      * Check if user has permission to access media file
