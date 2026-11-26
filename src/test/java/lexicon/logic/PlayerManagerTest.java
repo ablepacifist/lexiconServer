@@ -56,12 +56,10 @@ class PlayerManagerTest {
     }
     
     @Test
-    void testRegisterPlayerDuplicateEmail() {
+    void testRegisterPlayerSameEmailIsNotChecked() {
+        // There is no email column, so registration must not refuse on email.
         playerManager.registerPlayer("user1", "pass", "same@example.com", "User 1");
-        
-        assertThrows(IllegalArgumentException.class, () -> {
-            playerManager.registerPlayer("user2", "pass", "same@example.com", "User 2");
-        });
+        assertNotNull(playerManager.registerPlayer("user2", "pass", "same@example.com", "User 2"));
     }
     
     @Test
@@ -86,10 +84,8 @@ class PlayerManagerTest {
     }
     
     @Test
-    void testRegisterPlayerEmptyEmail() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            playerManager.registerPlayer("user", "pass", "", "Test");
-        });
+    void testRegisterPlayerWithoutEmail() {
+        assertNotNull(playerManager.registerPlayer("user", "pass", null, null));
     }
     
     @Test
