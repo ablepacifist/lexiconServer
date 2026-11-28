@@ -260,4 +260,32 @@ class TorrentDownloadServiceTest {
         file.setId(id);
         return file;
     }
+
+    // ── importing ────────────────────────────────────────────────────────────────────
+
+    @Test
+    void aFinishedTorrentWhoseFilesWereNotThereYetIsImportedOnALaterTick() throws Exception {
+        java.nio.file.Path saved = java.nio.file.Files.createTempDirectory("torrent-save");
+        java.nio.file.Files.write(saved.resolve("episode.mp4"), new byte[]{1});
+        TorrentDownload stuck = new TorrentDownload(HASH, "lexi-tag", "magnet:?xt=urn:btih:" + HASH,
+                "Some Torrent", 7, "VIDEO", false);
+        // An earlier tick found no files and left it here.
+        stuck.setStatus(TorrentDownload.Status.IMPORTING);
+        when(torrentDatabase.findActive()).thenReturn(List.of(stuck));
+        when(qbittorrent.byHashes(anyList())).thenReturn(List.of(new QBittorrentClient.TorrentInfo(
+                HASH, "Some Torrent", "stalledUP", 1.0, 100, 0, 0, "lexi-tag", saved.toString(), 0)));
+        when(qbittorrent.files(HASH)).thenReturn(List.of(
+                new QBittorrentClient.TorrentFile(0, "episode.mp4", 1, 1, 1.0)));
+        when(torrentDatabase.findImportedFiles(HASH)).thenReturn(List.of());
+        MediaFile media = new MediaFile();
+        media.setId(42);
+        when(mediaManager.importLinkedFile(any(), anyInt(), anyString(), anyString(), anyBoolean(), anyString(), any()))
+                .thenReturn(new MediaManagerService.ImportedMedia(media, true));
+
+        service.reconcile();
+
+        verify(mediaManager).importLinkedFile(eq(saved.resolve("episode.mp4")), eq(7), anyString(), anyString(),
+                anyBoolean(), eq("VIDEO"), any());
+        verify(torrentDatabase).updateStatus(HASH, TorrentDownload.Status.COMPLETED, null);
+    }
 }

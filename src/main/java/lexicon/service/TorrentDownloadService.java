@@ -324,8 +324,16 @@ public class TorrentDownloadService implements MediaManager.TorrentCleanup {
                 chooseFilesAndStart(download, download.getInfoHash());
                 return;
             }
-            if (info.complete() && download.getStatus() == TorrentDownload.Status.DOWNLOADING) {
-                torrentDatabase.updateStatus(download.getInfoHash(), TorrentDownload.Status.IMPORTING, null);
+            // IMPORTING too: when none of the files were in the save folder yet (qBittorrent
+            // still moving them, or a move that failed), importFinished leaves the torrent
+            // IMPORTING to be tried again. Checking DOWNLOADING alone meant it never was, and
+            // the finished download never reached the library.
+            TorrentDownload.Status status = download.getStatus();
+            if (info.complete() && (status == TorrentDownload.Status.DOWNLOADING
+                    || status == TorrentDownload.Status.IMPORTING)) {
+                if (status == TorrentDownload.Status.DOWNLOADING) {
+                    torrentDatabase.updateStatus(download.getInfoHash(), TorrentDownload.Status.IMPORTING, null);
+                }
                 importFinished(download, info);
             }
         } catch (TorrentRejected e) {
@@ -523,9 +531,10 @@ public class TorrentDownloadService implements MediaManager.TorrentCleanup {
 
     private void requireFreeSpace(long incomingBytes) {
         try {
-            // The storage base path ends in the same mount point WSL reports, e.g.
-            // .../PHYSICALDRIVE1p2/lexicon-storage against /mnt/wsl/PHYSICALDRIVE1p2.
-            String base = storageProperties.getBasePath().replace('\\', '/');
+            // The drive torrents download to, which with more than one media drive need not be
+            // the base path's: .../PHYSICALDRIVE2p1/lexicon-storage/torrents/complete against
+            // the mount point WSL reports, /mnt/wsl/PHYSICALDRIVE2p1.
+            String base = saveRoot.replace('\\', '/');
             long free = diskUsageService.listPhysicalDriveVolumes().stream()
                     .filter(volume -> base.contains(volume.mountPoint))
                     .mapToLong(volume -> volume.freeBytes)
