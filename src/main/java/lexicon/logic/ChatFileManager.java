@@ -1,8 +1,8 @@
 package lexicon.logic;
 
-import lexicon.config.StorageProperties;
 import lexicon.data.IChatFileDatabase;
 import lexicon.object.ChatFile;
+import lexicon.service.OptimizedFileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -27,23 +27,29 @@ public class ChatFileManager implements ChatFileManagerService {
             "image/jpeg", "image/png", "image/gif", "image/webp"
     );
 
+    private static final String CHAT_UPLOADS = "chat-uploads";
+
     private final IChatFileDatabase chatFileDatabase;
-    private final StorageProperties storageProperties;
+    private final OptimizedFileStorageService fileStorage;
 
     @Autowired
-    public ChatFileManager(IChatFileDatabase chatFileDatabase, StorageProperties storageProperties) {
+    public ChatFileManager(IChatFileDatabase chatFileDatabase, OptimizedFileStorageService fileStorage) {
         this.chatFileDatabase = chatFileDatabase;
-        this.storageProperties = storageProperties;
+        this.fileStorage = fileStorage;
     }
 
     @Override
     public long deleteChatFile(long fileId) {
         ChatFile chatFile = chatFileDatabase.getChatFile(fileId);
         if (chatFile == null) return -1;
-        Path dir = getChatUploadsDir().toAbsolutePath().normalize();
-        long freed = deleteInside(dir, chatFile.getStoredFilename());
-        if (chatFile.getThumbnailFilename() != null) {
-            freed += deleteInside(dir.resolve("thumbnails"), chatFile.getThumbnailFilename());
+        long freed = 0;
+        // The file is on one drive; the stored name says only which file, not which drive.
+        for (Path folder : fileStorage.folderOnEveryVolume(CHAT_UPLOADS)) {
+            Path dir = folder.toAbsolutePath().normalize();
+            freed += deleteInside(dir, chatFile.getStoredFilename());
+            if (chatFile.getThumbnailFilename() != null) {
+                freed += deleteInside(dir.resolve("thumbnails"), chatFile.getThumbnailFilename());
+            }
         }
         chatFileDatabase.deleteChatFile(fileId);
         return freed;
@@ -76,7 +82,8 @@ public class ChatFileManager implements ChatFileManagerService {
             throw new IllegalArgumentException("Unsupported file type: " + mimeType);
         }
 
-        Path chatUploadsDir = getChatUploadsDir();
+        // The drive with the most free space
+        Path chatUploadsDir = fileStorage.folderForNewFile(CHAT_UPLOADS);
         Path thumbDir = chatUploadsDir.resolve("thumbnails");
         try {
             Files.createDirectories(chatUploadsDir);
@@ -146,8 +153,8 @@ public class ChatFileManager implements ChatFileManagerService {
         ChatFile chatFile = chatFileDatabase.getChatFile(fileId);
         if (chatFile == null) return null;
 
-        Path filePath = getChatUploadsDir().resolve(chatFile.getStoredFilename());
-        if (!Files.exists(filePath)) return null;
+        Path filePath = findChatFile(chatFile.getStoredFilename());
+        if (filePath == null) return null;
 
         return new ChatFileServingInfo(filePath, chatFile.getMimeType());
     }
@@ -161,15 +168,15 @@ public class ChatFileManager implements ChatFileManagerService {
         String contentType;
 
         if (chatFile.getThumbnailFilename() != null) {
-            thumbPath = getChatUploadsDir().resolve("thumbnails").resolve(chatFile.getThumbnailFilename());
+            thumbPath = findChatFile("thumbnails/" + chatFile.getThumbnailFilename());
             contentType = "image/jpeg";
         } else {
             // Fall back to original file
-            thumbPath = getChatUploadsDir().resolve(chatFile.getStoredFilename());
+            thumbPath = findChatFile(chatFile.getStoredFilename());
             contentType = chatFile.getMimeType();
         }
 
-        if (!Files.exists(thumbPath)) return null;
+        if (thumbPath == null) return null;
 
         return new ChatFileServingInfo(thumbPath, contentType);
     }
@@ -189,8 +196,14 @@ public class ChatFileManager implements ChatFileManagerService {
         return response;
     }
 
-    private Path getChatUploadsDir() {
-        return Paths.get(storageProperties.getBasePath(), "chat-uploads");
+    /** The chat file on whichever drive holds it, or null. Names are unique, so the first match is the file. */
+    private Path findChatFile(String nameInChatUploads) {
+        if (nameInChatUploads == null || nameInChatUploads.isBlank()) return null;
+        for (Path folder : fileStorage.folderOnEveryVolume(CHAT_UPLOADS)) {
+            Path candidate = folder.resolve(nameInChatUploads);
+            if (Files.exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     private void generateThumbnail(BufferedImage original, Path outputPath) throws IOException {

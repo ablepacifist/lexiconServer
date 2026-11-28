@@ -45,8 +45,9 @@ public class StorageProperties {
     public String getBasePath() { return basePath; }
     public void setBasePath(String basePath) { this.basePath = basePath; }
     
-    public String getTempPath() { 
-        return tempPath != null ? tempPath : basePath + "/temp"; 
+    public String getTempPath() {
+        // Blank counts as unset: the .env placeholder for it resolves to "" when the key is empty.
+        return tempPath != null && !tempPath.isBlank() ? tempPath : basePath + "/temp";
     }
     public void setTempPath(String tempPath) { this.tempPath = tempPath; }
     
@@ -70,6 +71,12 @@ public class StorageProperties {
     }
     public void setBackupsPath(String backupsPath) { this.backupsPath = backupsPath; }
 
+    /**
+     * More media drives besides {@link #getBasePath()}, each the same kind of storage folder.
+     * New files go to whichever drive has the most free space; see OptimizedFileStorageService.
+     * Set from LEXICON_STORAGE_EXTRA_PATHS in .env (comma separated). Only ever append to it:
+     * a drive's place in this list is its volume number for drives that have no marker yet.
+     */
     public List<String> getAdditionalPaths() { return additionalPaths; }
     public void setAdditionalPaths(List<String> additionalPaths) { this.additionalPaths = additionalPaths; }
 
@@ -135,6 +142,24 @@ public class StorageProperties {
         return basePath + sizePath;
     }
     
+    /**
+     * The folder for a media type and size, relative to a drive's storage root ("music/compressed").
+     * Every drive uses the same layout, so where a file sits inside its drive does not depend on
+     * which drive it went to.
+     */
+    public String getRelativeStoragePathForMedia(String mediaType, long fileSize) {
+        switch (mediaType.toUpperCase()) {
+            case "AUDIOBOOK":
+                return "audiobooks" + ((fileSize > largeFileThreshold) ? "/large" : "/standard");
+            case "MUSIC":
+                return "music" + ((fileSize > smallFileThreshold) ? "/lossless" : "/compressed");
+            case "VIDEO":
+                return "videos/original";
+            default:
+                return "other";
+        }
+    }
+
     /**
      * Get thumbnails path for videos
      */

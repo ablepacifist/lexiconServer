@@ -379,4 +379,164 @@ class OptimizedFileStorageServiceTest {
         // against a path that does not exist inside WSL.
         assertNull(OptimizedFileStorageService.toWslPath(Path.of("//wsl.localhost/Ubuntu")));
     }
+
+    // ── Two media drives ─────────────────────────────────────────────────────────────
+
+    /** A service over two drives (folders), with WSL reporting the given free bytes for each. */
+    private OptimizedFileStorageService twoDrives(Path drive1, Path drive2, long free1, long free2) throws Exception {
+        Files.createDirectories(drive1);
+        Files.createDirectories(drive2);
+        StorageProperties props = new StorageProperties();
+        props.setBasePath(drive1.toString());
+        props.setAdditionalPaths(java.util.List.of(drive2.toString()));
+
+        WslDiskUsageService disks = org.mockito.Mockito.mock(WslDiskUsageService.class);
+        org.mockito.Mockito.when(disks.listPhysicalDriveVolumes()).thenReturn(java.util.List.of(
+                new WslDiskUsageService.Volume(drive1.toString().replace('\\', '/'), 1, 2, free1, 0, free1),
+                new WslDiskUsageService.Volume(drive2.toString().replace('\\', '/'), 2, 1, free2, 0, free2)));
+
+        OptimizedFileStorageService service = new OptimizedFileStorageService();
+        var p = OptimizedFileStorageService.class.getDeclaredField("storageProperties");
+        p.setAccessible(true);
+        p.set(service, props);
+        var d = OptimizedFileStorageService.class.getDeclaredField("wslDiskUsageService");
+        d.setAccessible(true);
+        d.set(service, disks);
+        return service;
+    }
+
+    private static MockMultipartFile song(String name) {
+        return new MockMultipartFile("file", name, "audio/mpeg", new byte[]{1, 2, 3, 4});
+    }
+
+    private static MediaFile songRow(String title) {
+        MediaFile row = new MediaFile();
+        row.setTitle(title);
+        row.setMediaType(MediaType.MUSIC);
+        return row;
+    }
+
+    @Test
+    void aNewFileGoesToTheDriveWithMoreFreeSpace() throws Exception {
+        OptimizedFileStorageService service = twoDrives(tempDir.resolve("d1"), tempDir.resolve("d2"), 100, 1_000_000);
+
+        String stored = service.storeFile(song("a.mp3"), songRow("a"));
+
+        assertTrue(stored.startsWith("v2:"), "path on the second drive carries its number: " + stored);
+        Path onDisk = tempDir.resolve("d2").resolve(stored.substring(3));
+        assertTrue(Files.exists(onDisk));
+        assertTrue(service.fileExists(stored));
+        assertEquals(4, service.getFileSize(stored));
+        try (InputStream in = service.getFileInputStream(stored)) {
+            assertArrayEquals(new byte[]{1, 2, 3, 4}, in.readAllBytes());
+        }
+        assertTrue(service.deleteFile(stored));
+        assertFalse(Files.exists(onDisk));
+    }
+
+    @Test
+    void theFirstDriveIsUsedWhileItHasMoreFreeSpace() throws Exception {
+        OptimizedFileStorageService service = twoDrives(tempDir.resolve("d1"), tempDir.resolve("d2"), 1_000_000, 100);
+
+        String stored = service.storeFile(song("b.mp3"), songRow("b"));
+
+        assertFalse(stored.startsWith("v2:"), "volume 1 paths keep the old unprefixed form: " + stored);
+        assertTrue(Files.exists(tempDir.resolve("d1").resolve(stored)));
+    }
+
+    @Test
+    void pathsWrittenBeforeTheSecondDriveStillReadFromTheFirst() throws Exception {
+        Path drive1 = tempDir.resolve("d1");
+        Files.createDirectories(drive1.resolve("music/compressed"));
+        Files.write(drive1.resolve("music/compressed/old.mp3"), new byte[]{9, 9});
+        OptimizedFileStorageService service = twoDrives(drive1, tempDir.resolve("d2"), 100, 1_000_000);
+
+        assertEquals(2, service.getFileSize("music/compressed/old.mp3"));
+        assertEquals(2, service.getFileSize("music\\compressed\\old.mp3".replace('\\', java.io.File.separatorChar)));
+    }
+
+    @Test
+    void markersKeepEachDriveItsNumberWhenTheConfigurationSwaps() throws Exception {
+        Path drive1 = tempDir.resolve("d1");
+        Path drive2 = tempDir.resolve("d2");
+        String stored = twoDrives(drive1, drive2, 100, 1_000_000).storeFile(song("c.mp3"), songRow("c"));
+        assertTrue(stored.startsWith("v2:"));
+        assertEquals("2", Files.readString(drive2.resolve(OptimizedFileStorageService.VOLUME_MARKER)).trim());
+
+        // Windows renumbered the disks: the base path now names the drive that was volume 2.
+        OptimizedFileStorageService swapped = twoDrives(drive2, drive1, 100, 1_000_000);
+
+        assertTrue(swapped.fileExists(stored), "a v2: path must still find its file on the same drive");
+        assertEquals(drive1.toAbsolutePath(), swapped.primaryVolume().root().toAbsolutePath());
+    }
+
+    @Test
+    void anUnmountedDriveMeansNotFoundRatherThanAnotherFile() throws Exception {
+        Path drive1 = tempDir.resolve("d1");
+        OptimizedFileStorageService service = twoDrives(drive1, tempDir.resolve("d2"), 100, 1_000_000);
+        Files.createDirectories(drive1.resolve("music"));
+        Files.write(drive1.resolve("music/same.mp3"), new byte[]{1});
+
+        assertFalse(service.fileExists("v3:music/same.mp3"));
+    }
+
+    @Test
+    void theStorageCheckSeesBothDrivesAndDeletesOnTheRightOne() throws Exception {
+        Path drive1 = tempDir.resolve("d1");
+        Path drive2 = tempDir.resolve("d2");
+        OptimizedFileStorageService service = twoDrives(drive1, drive2, 100, 1_000_000);
+        Files.createDirectories(drive1.resolve("music"));
+        Files.write(drive1.resolve("music/one.mp3"), new byte[]{1});
+        Files.createDirectories(drive2.resolve("music"));
+        Files.write(drive2.resolve("music/two.mp3"), new byte[]{1, 2});
+
+        var listed = service.listStoredFiles(java.util.List.of("music"));
+        var paths = listed.stream().map(OptimizedFileStorageService.StoredFile::relativePath).sorted().toList();
+        assertEquals(java.util.List.of("music/one.mp3", "v2:music/two.mp3"), paths);
+
+        assertEquals(-1, service.deleteStoredFile("v2:music/two.mp3", java.util.List.of("videos")), "outside the allowed folders");
+        assertEquals(2, service.deleteStoredFile("v2:music/two.mp3", java.util.List.of("music")));
+        assertFalse(Files.exists(drive2.resolve("music/two.mp3")));
+        assertTrue(Files.exists(drive1.resolve("music/one.mp3")));
+    }
+
+    @Test
+    void anImportedTorrentStaysOnTheDriveItDownloadedTo() throws Exception {
+        Path drive1 = tempDir.resolve("d1");
+        OptimizedFileStorageService service = twoDrives(drive1, tempDir.resolve("d2"), 100, 1_000_000);
+        Path downloaded = drive1.resolve("torrents/complete/show.mkv");
+        Files.createDirectories(downloaded.getParent());
+        Files.write(downloaded, new byte[]{7});
+
+        // No WSL in the test, so the hard link falls back to a move; either way it must not cross drives.
+        var result = service.linkFileIntoStorage(downloaded, "show.mkv", 1, MediaType.VIDEO);
+
+        assertFalse(result.relativePath().startsWith("v2:"), "stayed on volume 1: " + result.relativePath());
+        assertTrue(Files.exists(drive1.resolve(result.relativePath())));
+    }
+
+    @Test
+    void chatUploadsUseTheFreerDriveAndAreFoundThere() throws Exception {
+        OptimizedFileStorageService service = twoDrives(tempDir.resolve("d1"), tempDir.resolve("d2"), 100, 1_000_000);
+        lexicon.data.IChatFileDatabase db = org.mockito.Mockito.mock(lexicon.data.IChatFileDatabase.class);
+        lexicon.logic.ChatFileManager chat = new lexicon.logic.ChatFileManager(db, service);
+        byte[] png = pngBytes();
+
+        chat.uploadChatFile(png, "pic.png", "image/png", 1, null);
+
+        var saved = org.mockito.ArgumentCaptor.forClass(lexicon.object.ChatFile.class);
+        org.mockito.Mockito.verify(db).addChatFile(saved.capture());
+        Path onDrive2 = tempDir.resolve("d2/chat-uploads").resolve(saved.getValue().getStoredFilename());
+        assertTrue(Files.exists(onDrive2));
+
+        org.mockito.Mockito.when(db.getChatFile(5L)).thenReturn(saved.getValue());
+        assertEquals(onDrive2, chat.getFileForServing(5L).getPath());
+    }
+
+    private static byte[] pngBytes() throws IOException {
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", out);
+        return out.toByteArray();
+    }
 }

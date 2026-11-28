@@ -27,6 +27,228 @@ public class OptimizedFileStorageService {
     @Autowired
     private WslDiskUsageService wslDiskUsageService;
 
+    // ── Media drives ─────────────────────────────────────────────────────────────────
+    //
+    // Volume 1 is lexicon.storage.base-path. Every path written before there was a second
+    // drive is relative to it with no prefix ("music/original/a.mp3") and stays that way, so
+    // no database row changes. Each drive in lexicon.storage.additional-paths is volume 2, 3,
+    // ... and its paths carry the number: "v2:music/original/b.mp3".
+    //
+    // New files go to the drive with the most free space.
+    //
+    // A drive's number is also written to a .lexicon-volume file at its root the first time it
+    // is used, and read back from there. The configured paths name drives by Windows disk number
+    // (PHYSICALDRIVE1p2, PHYSICALDRIVE2p1), which can swap when USB drives come up in another
+    // order; the marker keeps every "v2:" path on the drive it was written to.
+
+    /** One media drive: its number and the storage folder on it. */
+    public record Volume(int id, Path root) {
+        public boolean isPrimary() { return id == 1; }
+    }
+
+    static final String VOLUME_MARKER = ".lexicon-volume";
+    private static final java.util.regex.Pattern VOLUME_PREFIX =
+            java.util.regex.Pattern.compile("^v(\\d+):(.*)$", java.util.regex.Pattern.DOTALL);
+    private static final long FREE_SPACE_CACHE_MS = 60_000;
+    private static final long RECHECK_MISSING_MS = 30_000;
+
+    private List<Volume> volumeCache;
+    private long volumesAssignedAt;
+    private final Map<Integer, Long> freeSpaceCache = new HashMap<>();
+    private long freeSpaceCachedAt;
+
+    /** The configured drives that are mounted, volume 1 first. */
+    public synchronized List<Volume> volumes() {
+        // Rechecked every 30 seconds while a configured drive is missing, so a drive mounted
+        // after start-up is picked up; once all are there the answer cannot change.
+        long now = System.currentTimeMillis();
+        if (volumeCache == null
+                || (volumeCache.size() < configuredRoots().size() && now - volumesAssignedAt > RECHECK_MISSING_MS)) {
+            volumeCache = assignVolumes();
+            volumesAssignedAt = now;
+        }
+        return volumeCache;
+    }
+
+    /** Volume 1, where every unprefixed path lives, even while it is not mounted. */
+    public Volume primaryVolume() {
+        return volumes().stream().filter(Volume::isPrimary).findFirst()
+                .orElse(new Volume(1, configuredRoots().get(0)));
+    }
+
+    /** The drive a stored path names: its "vN:" prefix, or volume 1 without one. */
+    public Volume volumeOf(String storedPath) {
+        java.util.regex.Matcher m = VOLUME_PREFIX.matcher(storedPath == null ? "" : storedPath);
+        if (!m.matches()) return primaryVolume();
+        int id = Integer.parseInt(m.group(1));
+        return volumes().stream().filter(v -> v.id() == id).findFirst()
+                // Not mounted: a path that cannot exist, so the caller gets "not found" for
+                // this file rather than some other file.
+                .orElse(new Volume(id, primaryVolume().root().resolve("missing-volume-" + id)));
+    }
+
+    /** The path inside its drive, without the "vN:" prefix. */
+    public static String withoutVolumePrefix(String storedPath) {
+        java.util.regex.Matcher m = VOLUME_PREFIX.matcher(storedPath == null ? "" : storedPath);
+        return m.matches() ? m.group(2) : storedPath;
+    }
+
+    /** Where a path from the database is on disk. */
+    public Path resolveStoredPath(String storedPath) {
+        return volumeOf(storedPath).root().resolve(withoutVolumePrefix(storedPath));
+    }
+
+    /** The path the database holds for a file on the given drive. */
+    public String toStoredPath(Volume volume, Path file) {
+        String relative = volume.root().relativize(file).toString();
+        return volume.isPrimary() ? relative : "v" + volume.id() + ":" + relative;
+    }
+
+    /** The drive whose storage folder holds this absolute path, if any. */
+    public Optional<Volume> volumeContaining(Path file) {
+        Path normalized = file.toAbsolutePath().normalize();
+        return volumes().stream()
+                .filter(v -> normalized.startsWith(v.root().toAbsolutePath().normalize()))
+                .findFirst();
+    }
+
+    /** The drive a new file goes to: the one with the most free space. */
+    public Volume volumeForNewFile() {
+        List<Volume> all = volumes();
+        if (all.size() <= 1) return primaryVolume();
+        Map<Integer, Long> free = freeSpace(all);
+        return all.stream()
+                .max(Comparator.comparingLong((Volume v) -> free.getOrDefault(v.id(), -1L))
+                        // On a tie, or with no figures at all, the lower number wins.
+                        .thenComparing(Volume::id, Comparator.reverseOrder()))
+                .orElse(primaryVolume());
+    }
+
+    /** A storage folder ("chat-uploads") on the drive a new file should go to. */
+    public Path folderForNewFile(String folder) {
+        return volumeForNewFile().root().resolve(folder);
+    }
+
+    /** The same storage folder on every mounted drive, volume 1 first. */
+    public List<Path> folderOnEveryVolume(String folder) {
+        List<Path> folders = new ArrayList<>();
+        for (Volume v : volumes()) folders.add(v.root().resolve(folder));
+        if (folders.isEmpty()) folders.add(primaryVolume().root().resolve(folder));
+        return folders;
+    }
+
+    /** The folder for this media type and size on the given drive. */
+    private Path mediaDir(Volume volume, String mediaType, long fileSize) {
+        // Volume 1 at the configured base path keeps honouring the per-type path overrides.
+        if (volume.isPrimary() && volume.root().equals(Paths.get(storageProperties.getBasePath()))) {
+            return Paths.get(storageProperties.getStoragePathForMedia(mediaType, fileSize));
+        }
+        return volume.root().resolve(storageProperties.getRelativeStoragePathForMedia(mediaType, fileSize));
+    }
+
+    private synchronized Map<Integer, Long> freeSpace(List<Volume> all) {
+        long now = System.currentTimeMillis();
+        if (freeSpaceCache.size() == all.size() && now - freeSpaceCachedAt < FREE_SPACE_CACHE_MS) {
+            return freeSpaceCache;
+        }
+        freeSpaceCache.clear();
+        List<WslDiskUsageService.Volume> drives = List.of();
+        if (wslDiskUsageService != null) {
+            try {
+                drives = wslDiskUsageService.listPhysicalDriveVolumes();
+            } catch (IOException e) {
+                System.err.println("Could not read drive usage from WSL: " + e.getMessage());
+            }
+        }
+        for (Volume v : all) {
+            // Java's own figure for a \\wsl.localhost path is the distro's disk, not the drive,
+            // so WSL's report is used when it names this drive's mount point.
+            String root = v.root().toString().replace('\\', '/');
+            long free = drives.stream()
+                    .filter(d -> root.contains(d.mountPoint))
+                    .mapToLong(d -> d.freeBytes)
+                    .findFirst()
+                    .orElseGet(() -> usableSpace(v.root()));
+            freeSpaceCache.put(v.id(), free);
+        }
+        freeSpaceCachedAt = now;
+        return freeSpaceCache;
+    }
+
+    private static long usableSpace(Path root) {
+        try {
+            return Files.getFileStore(root).getUsableSpace();
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    private List<Path> configuredRoots() {
+        List<Path> roots = new ArrayList<>();
+        roots.add(Paths.get(storageProperties.getBasePath()));
+        for (String extra : storageProperties.getAdditionalPaths()) {
+            if (extra != null && !extra.isBlank()) roots.add(Paths.get(extra.trim()));
+        }
+        return roots;
+    }
+
+    /** Numbers each mounted drive by its marker, or by its place in the configuration (then writes the marker). */
+    private List<Volume> assignVolumes() {
+        List<Path> roots = configuredRoots();
+        Map<Integer, Path> byId = new HashMap<>();
+        List<Integer> unmarked = new ArrayList<>();
+        for (int i = 0; i < roots.size(); i++) {
+            Path root = roots.get(i);
+            if (!Files.isDirectory(root)) continue; // not mounted right now
+            Integer marked = readVolumeMarker(root);
+            if (marked == null) {
+                unmarked.add(i);
+            } else if (byId.containsKey(marked)) {
+                System.err.println("Two storage drives claim volume " + marked + "; ignoring " + root);
+            } else {
+                if (marked != i + 1) {
+                    System.err.println("Storage drive " + root + " is volume " + marked
+                            + " by its marker, not " + (i + 1) + " by its place in the configuration; using the marker.");
+                }
+                byId.put(marked, root);
+            }
+        }
+        for (int i : unmarked) {
+            int id = i + 1;
+            if (byId.containsKey(id)) {
+                System.err.println("Storage drive " + roots.get(i) + " has no marker and volume " + id
+                        + " is taken; leaving it unused.");
+                continue;
+            }
+            byId.put(id, roots.get(i));
+            writeVolumeMarker(roots.get(i), id);
+        }
+        List<Volume> result = new ArrayList<>();
+        byId.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .forEach(e -> result.add(new Volume(e.getKey(), e.getValue())));
+        return result;
+    }
+
+    private static Integer readVolumeMarker(Path root) {
+        Path marker = root.resolve(VOLUME_MARKER);
+        if (!Files.isRegularFile(marker)) return null;
+        try {
+            return Integer.parseInt(Files.readString(marker).trim());
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Unreadable storage marker " + marker + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static void writeVolumeMarker(Path root, int id) {
+        try {
+            Files.writeString(root.resolve(VOLUME_MARKER), id + System.lineSeparator());
+        } catch (IOException e) {
+            System.err.println("Could not write storage marker in " + root + ": " + e.getMessage());
+        }
+    }
+
+
     /**
      * Store a file using the optimized storage strategy
      */
@@ -43,13 +265,11 @@ public class OptimizedFileStorageService {
      * Store file on file system with optimized organization
      */
     private String storeOnFileSystem(MultipartFile file, MediaFile mediaFile, long fileSize, String mediaType) throws IOException {
-        // Get appropriate storage path
-        String storagePath = storageProperties.getStoragePathForMedia(mediaType, fileSize);
-        
-        // Ensure directory exists
-        Path storageDir = Paths.get(storagePath);
+        // The drive with the most free space, then the folder for this type on it
+        Volume volume = volumeForNewFile();
+        Path storageDir = mediaDir(volume, mediaType, fileSize);
         Files.createDirectories(storageDir);
-        
+
         // Generate unique filename with timestamp and original extension
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uniqueId = UUID.randomUUID().toString().substring(0, 8);
@@ -70,9 +290,8 @@ public class OptimizedFileStorageService {
             Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
         }
         
-        // Return relative path for database storage
-        Path basePath = Paths.get(storageProperties.getBasePath());
-        return basePath.relativize(filePath).toString();
+        // Return the path for the database: relative, with "vN:" when not on volume 1
+        return toStoredPath(volume, filePath);
     }
     
     /**
@@ -80,15 +299,13 @@ public class OptimizedFileStorageService {
      */
     public String storeFileFromStream(InputStream inputStream, String originalFilename, 
                                       long fileSize, lexicon.object.MediaType mediaType) throws IOException {
-        // Get appropriate storage path
-        String storagePath = storageProperties.getStoragePathForMedia(mediaType.name(), fileSize);
-        
-        // Ensure directory exists
-        Path storageDir = Paths.get(storagePath);
+        // The drive with the most free space, then the folder for this type on it
+        Volume volume = volumeForNewFile();
+        Path storageDir = mediaDir(volume, mediaType.name(), fileSize);
         Files.createDirectories(storageDir);
-        
+
         // Generate unique filename
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uniqueId = UUID.randomUUID().toString().substring(0, 8);
         String extension = getFileExtension(originalFilename);
         String cleanName = sanitizeFilename(originalFilename.replace(extension, ""));
@@ -109,9 +326,8 @@ public class OptimizedFileStorageService {
             }
         }
         
-        // Return relative path
-        Path basePath = Paths.get(storageProperties.getBasePath());
-        return basePath.relativize(filePath).toString();
+        // Return the path for the database
+        return toStoredPath(volume, filePath);
     }
     
     /**
@@ -136,7 +352,7 @@ public class OptimizedFileStorageService {
      * Get file input stream for serving files
      */
     public InputStream getFileInputStream(String relativePath) throws IOException {
-        Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+        Path fullPath = resolveStoredPath(relativePath);
         
         if (!Files.exists(fullPath)) {
             throw new FileNotFoundException("File not found: " + relativePath);
@@ -149,7 +365,7 @@ public class OptimizedFileStorageService {
      * Get file for streaming with range support
      */
     public FileStreamInfo getFileForStreaming(String relativePath, long rangeStart, long rangeEnd) throws IOException {
-        Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+        Path fullPath = resolveStoredPath(relativePath);
         
         if (!Files.exists(fullPath)) {
             throw new FileNotFoundException("File not found: " + relativePath);
@@ -195,8 +411,9 @@ public class OptimizedFileStorageService {
      */
     public LinkResult linkFileIntoStorage(Path source, String originalFilename, long fileSize,
                                           MediaType mediaType) throws IOException {
-        String storagePath = storageProperties.getStoragePathForMedia(mediaType.name(), fileSize);
-        Path storageDir = Paths.get(storagePath);
+        // The drive the torrent downloaded to: a hard link cannot cross drives.
+        Volume volume = volumeContaining(source).orElseGet(this::volumeForNewFile);
+        Path storageDir = mediaDir(volume, mediaType.name(), fileSize);
         Files.createDirectories(storageDir);
 
         // Same naming as storeFileFromStream, so torrent imports are indistinguishable from
@@ -214,8 +431,7 @@ public class OptimizedFileStorageService {
             Files.move(source, target);
         }
 
-        Path basePath = Paths.get(storageProperties.getBasePath());
-        return new LinkResult(basePath.relativize(target).toString(), linked);
+        return new LinkResult(toStoredPath(volume, target), linked);
     }
 
     /** Where an imported file landed, and whether the torrent can still seed it. */
@@ -290,16 +506,20 @@ public class OptimizedFileStorageService {
      * not followed and folders that do not exist are skipped. Read-only.
      */
     public List<StoredFile> listStoredFiles(List<String> folders) throws IOException {
-        Path base = Paths.get(storageProperties.getBasePath()).toAbsolutePath().normalize();
         List<StoredFile> files = new ArrayList<>();
-        for (String folder : folders) {
-            Path root = base.resolve(folder).normalize();
-            if (!root.startsWith(base) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) continue;
-            try (var walk = Files.walk(root)) {
-                for (Path p : (Iterable<Path>) walk::iterator) {
-                    if (!Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) continue;
-                    String rel = base.relativize(p).toString().replace('\\', '/');
-                    files.add(new StoredFile(rel, Files.size(p), Files.getLastModifiedTime(p, LinkOption.NOFOLLOW_LINKS).toMillis()));
+        // Every drive, each file named the way the database names it ("vN:" off volume 1).
+        for (Volume volume : volumes()) {
+            Path base = volume.root().toAbsolutePath().normalize();
+            String prefix = volume.isPrimary() ? "" : "v" + volume.id() + ":";
+            for (String folder : folders) {
+                Path root = base.resolve(folder).normalize();
+                if (!root.startsWith(base) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) continue;
+                try (var walk = Files.walk(root)) {
+                    for (Path p : (Iterable<Path>) walk::iterator) {
+                        if (!Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)) continue;
+                        String rel = prefix + base.relativize(p).toString().replace('\\', '/');
+                        files.add(new StoredFile(rel, Files.size(p), Files.getLastModifiedTime(p, LinkOption.NOFOLLOW_LINKS).toMillis()));
+                    }
                 }
             }
         }
@@ -312,8 +532,8 @@ public class OptimizedFileStorageService {
      */
     public long deleteStoredFile(String relativePath, List<String> allowedFolders) {
         if (relativePath == null || relativePath.isBlank()) return -1;
-        Path base = Paths.get(storageProperties.getBasePath()).toAbsolutePath().normalize();
-        Path target = base.resolve(relativePath.replace('\\', '/')).normalize();
+        Path base = volumeOf(relativePath).root().toAbsolutePath().normalize();
+        Path target = base.resolve(withoutVolumePrefix(relativePath).replace('\\', '/')).normalize();
         boolean allowed = allowedFolders.stream().map(f -> base.resolve(f).normalize()).anyMatch(target::startsWith);
         if (!allowed || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) return -1;
         try {
@@ -331,7 +551,7 @@ public class OptimizedFileStorageService {
      */
     public boolean deleteFile(String relativePath) {
         try {
-            Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+            Path fullPath = resolveStoredPath(relativePath);
             return Files.deleteIfExists(fullPath);
         } catch (IOException e) {
             System.err.println("Failed to delete file: " + relativePath + " - " + e.getMessage());
@@ -343,7 +563,7 @@ public class OptimizedFileStorageService {
      * Get file size
      */
     public long getFileSize(String relativePath) throws IOException {
-        Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+        Path fullPath = resolveStoredPath(relativePath);
         return Files.size(fullPath);
     }
     
@@ -351,7 +571,7 @@ public class OptimizedFileStorageService {
      * Check if file exists
      */
     public boolean fileExists(String relativePath) {
-        Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+        Path fullPath = resolveStoredPath(relativePath);
         return Files.exists(fullPath);
     }
     
@@ -359,15 +579,16 @@ public class OptimizedFileStorageService {
      * Move file to different storage category (e.g., after transcoding)
      */
     public String moveFile(String currentPath, String newMediaType, long newFileSize) throws IOException {
-        Path currentFullPath = Paths.get(storageProperties.getBasePath(), currentPath);
-        
+        // Stays on its own drive, so the move is a rename rather than a copy
+        Volume volume = volumeOf(currentPath);
+        Path currentFullPath = resolveStoredPath(currentPath);
+
         if (!Files.exists(currentFullPath)) {
             throw new FileNotFoundException("Source file not found: " + currentPath);
         }
-        
+
         // Get new storage path
-        String newStoragePath = storageProperties.getStoragePathForMedia(newMediaType, newFileSize);
-        Path newStorageDir = Paths.get(newStoragePath);
+        Path newStorageDir = mediaDir(volume, newMediaType, newFileSize);
         Files.createDirectories(newStorageDir);
         
         // Keep same filename
@@ -377,17 +598,16 @@ public class OptimizedFileStorageService {
         // Move file
         Files.move(currentFullPath, newFullPath, StandardCopyOption.REPLACE_EXISTING);
         
-        // Return new relative path
-        Path basePath = Paths.get(storageProperties.getBasePath());
-        return basePath.relativize(newFullPath).toString();
+        // Return the new path for the database
+        return toStoredPath(volume, newFullPath);
     }
     
     /**
      * Move file to specific destination path (for testing and direct moves)
      */
     public String moveFileToPath(String sourcePath, String destinationPath, long fileSize) throws IOException {
-        Path sourceFullPath = Paths.get(storageProperties.getBasePath(), sourcePath);
-        Path destFullPath = Paths.get(storageProperties.getBasePath(), destinationPath);
+        Path sourceFullPath = resolveStoredPath(sourcePath);
+        Path destFullPath = resolveStoredPath(destinationPath);
         
         if (!Files.exists(sourceFullPath)) {
             throw new FileNotFoundException("Source file not found: " + sourcePath);
@@ -406,7 +626,7 @@ public class OptimizedFileStorageService {
      * Generate checksum for file integrity verification
      */
     public String generateChecksum(String relativePath) throws IOException {
-        Path fullPath = Paths.get(storageProperties.getBasePath(), relativePath);
+        Path fullPath = resolveStoredPath(relativePath);
         
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
