@@ -88,6 +88,34 @@ class PlaylistManagerTest {
     }
 
     @Test
+    @Order(1)
+    void testCreatePlaylistWithoutACreatedDate() {
+        // What the Android app sends: its empty createdDate arrives as null.
+        Playlist playlist = new Playlist();
+        playlist.setName("Made in the app");
+        playlist.setCreatedBy(TEST_USER_ID);
+        playlist.setMediaType(MediaType.VIDEO);
+        playlist.setCreatedDate(null);
+
+        int id = playlistManager.createPlaylist(playlist);
+
+        assertTrue(id > 0, "a playlist with no date from the client is still created");
+        assertNotNull(playlistManager.getPlaylistById(id).getCreatedDate());
+        playlistManager.deletePlaylist(id, TEST_USER_ID);
+    }
+
+    @Test
+    @Order(1)
+    void testCreatePlaylistWithoutAMediaTypeIsRefusedClearly() {
+        Playlist playlist = new Playlist();
+        playlist.setName("No type");
+        playlist.setCreatedBy(TEST_USER_ID);
+        playlist.setMediaType(null);
+
+        assertThrows(IllegalArgumentException.class, () -> playlistManager.createPlaylist(playlist));
+    }
+
+    @Test
     @Order(2)
     void testCreatePlaylistWithEmptyName() {
         Playlist playlist = new Playlist();

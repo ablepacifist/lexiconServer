@@ -35,6 +35,13 @@ public class PlaylistManager {
         if (playlist.getName() == null || playlist.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("Playlist name cannot be empty");
         }
+        if (playlist.getMediaType() == null) {
+            throw new IllegalArgumentException("Choose music, video or audiobook for the playlist");
+        }
+        // The server decides when a playlist was created. The Android app sends its model's
+        // default, "createdDate": "", which Jackson reads as null; the insert then threw and
+        // every playlist made in the app failed with a 500.
+        playlist.setCreatedDate(java.time.LocalDateTime.now());
         return playlistDatabase.createPlaylist(playlist);
     }
     
